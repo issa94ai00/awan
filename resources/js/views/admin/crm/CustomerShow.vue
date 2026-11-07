@@ -83,7 +83,26 @@
               <span v-else>-</span>
             </el-descriptions-item>
             <el-descriptions-item :label="$t('customer_source')">{{ customer.source || '-' }}</el-descriptions-item>
-            <el-descriptions-item :label="$t('assigned_employee')">{{ customer.employee?.name || '-' }}</el-descriptions-item>
+            <el-descriptions-item :label="$t('cust_sales_reps')">
+              <div class="rep-cell">
+                <template v-if="salesReps.length">
+                  <el-tag
+                    v-for="r in salesReps"
+                    :key="r.id"
+                    :type="r.is_primary ? 'primary' : 'info'"
+                    :effect="r.is_primary ? 'dark' : 'plain'"
+                    size="small"
+                    :title="r.is_primary ? $t('cust_primary_rep_hint') : ''"
+                  >
+                    <i v-if="r.is_primary" class="fas fa-star"></i> {{ r.name }}
+                  </el-tag>
+                </template>
+                <span v-else>-</span>
+                <el-button v-if="isAdmin" link type="primary" size="small" @click="openRepsDialog">
+                  <i class="fas fa-user-pen"></i>&nbsp;{{ $t('edit') }}
+                </el-button>
+              </div>
+            </el-descriptions-item>
           </el-descriptions>
 
           <div class="divider"></div>
@@ -366,6 +385,27 @@
     />
 
     <CreditNotePrintDialog v-model="creditNotePrintVisible" :credit-note-id="creditNotePrintId" />
+
+    <!-- Who serves this customer, and whom new sales default to (admins). -->
+    <el-dialog v-model="repsDialog.visible" :title="$t('cust_sales_reps')" width="460px" append-to-body>
+      <el-form label-position="top">
+        <el-form-item :label="$t('cust_reps_serving')">
+          <el-select v-model="repsDialog.employee_ids" multiple filterable :loading="repsDialog.loading" style="width: 100%" :placeholder="$t('cust_choose_reps')">
+            <el-option v-for="e in repsDialog.employees" :key="e.id" :label="e.name" :value="e.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item :label="$t('cust_primary_rep')">
+          <el-select v-model="repsDialog.primary" clearable filterable style="width: 100%" :placeholder="$t('cust_no_primary_rep')">
+            <el-option v-for="e in repsDialog.employees" :key="e.id" :label="e.name" :value="e.id" />
+          </el-select>
+          <small class="rep-dialog-hint">{{ $t('cust_primary_rep_hint') }}</small>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="repsDialog.visible = false">{{ $t('cancel') }}</el-button>
+        <el-button type="primary" :loading="repsDialog.saving" @click="saveReps">{{ $t('save') }}</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -377,6 +417,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { User, Back, Edit, Refresh } from '@element-plus/icons-vue';
 import { ElMessage, ElTag } from 'element-plus';
 import api from '@/api';
+import { useAuthStore } from '@/stores/auth';
 import QuickPaymentDialog from '@/components/admin/sales/QuickPaymentDialog.vue';
 import CreditNotePrintDialog from '@/components/admin/sales/CreditNotePrintDialog.vue';
 
@@ -397,6 +438,53 @@ const activeTab = ref('orders');
 const paymentDialogVisible = ref(false);
 
 const customer = ref({ id: null, name: '', status: 'inactive' });
+
+// ── Sales reps ─────────────────────────────────────────────────────────
+// Who serves the customer; the primary one is whom new invoices and orders
+// default to. Changing it is an admin's decision (the API is admin-only).
+const authStore = useAuthStore();
+const isAdmin = computed(() => Boolean(authStore.isSuperAdmin || authStore.user?.is_admin || authStore.hasRole(['admin', 'master'])));
+const salesReps = ref([]);
+const repsDialog = ref({ visible: false, loading: false, saving: false, employees: [], employee_ids: [], primary: null });
+
+const openRepsDialog = async () => {
+  const d = repsDialog.value;
+  d.employee_ids = salesReps.value.map((r) => r.id);
+  d.primary = salesReps.value.find((r) => r.is_primary)?.id || customer.value.employee_id || null;
+  d.employees = salesReps.value.map((r) => ({ id: r.id, name: r.name }));
+  d.visible = true;
+  d.loading = true;
+  try {
+    const { data } = await api.get('/sales-employees');
+    const list = Array.isArray(data?.data) ? data.data : [];
+    const known = new Map(d.employees.map((e) => [e.id, e]));
+    list.forEach((e) => known.set(e.id, { id: e.id, name: e.name || `#${e.id}` }));
+    d.employees = [...known.values()];
+  } catch {
+    // The reps already linked stay choosable.
+  } finally {
+    d.loading = false;
+  }
+};
+
+const saveReps = async () => {
+  const d = repsDialog.value;
+  d.saving = true;
+  try {
+    const { data } = await api.put(`/admin/customers/${customer.value.id}/sales-reps`, {
+      primary_employee_id: d.primary || null,
+      employee_ids: d.employee_ids,
+    });
+    salesReps.value = data?.data?.sales_reps || [];
+    customer.value = { ...customer.value, employee_id: data?.data?.employee_id ?? null };
+    d.visible = false;
+    ElMessage.success(t('cust_reps_saved'));
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || t('cust_reps_save_failed'));
+  } finally {
+    d.saving = false;
+  }
+};
 const metrics = ref({});
 const data = ref({
   sales_orders: [],
@@ -526,6 +614,7 @@ const loadOverview = async () => {
     const payload = response.data?.data || {};
 
     customer.value = payload.customer || {};
+    salesReps.value = payload.sales_reps || [];
     metrics.value = payload.metrics || {};
     data.value = {
       sales_orders: payload.sales_orders || [],
@@ -922,5 +1011,18 @@ onMounted(loadOverview);
   .header-actions {
     width: 100%;
   }
+}
+.rep-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.rep-dialog-hint {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--el-text-color-secondary);
 }
 </style>

@@ -384,6 +384,14 @@ class EmployeeController extends Controller
 
         $employee->customers()->syncWithoutDetaching($validated['customer_ids']);
 
+        // A customer nobody owned yet becomes this employee's: their sales
+        // now default to them.
+        \App\Models\Customer::whereIn('id', $validated['customer_ids'])->whereNull('employee_id')->get()
+            ->each(fn ($customer) => $customer->setSalesReps(
+                (int) $employee->id,
+                $customer->customerEmployees()->pluck('employees.id')->all()
+            ));
+
         return response()->json([
             'success' => true,
             'message' => 'Customers attached successfully',
@@ -399,6 +407,15 @@ class EmployeeController extends Controller
         ]);
 
         $employee->customers()->detach($validated['customer_ids']);
+
+        // Where they were the primary rep, the customer falls to the one
+        // employee left serving it, or to nobody — never to someone no
+        // longer linked.
+        \App\Models\Customer::whereIn('id', $validated['customer_ids'])->where('employee_id', $employee->id)->get()
+            ->each(function ($customer) {
+                $left = $customer->customerEmployees()->pluck('employees.id')->all();
+                $customer->setSalesReps(count($left) === 1 ? (int) $left[0] : null, $left);
+            });
 
         return response()->json([
             'success' => true,

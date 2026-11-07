@@ -465,6 +465,11 @@ class InvoiceController extends Controller
                 $validated['assigned_employee_id'] = $repEmployeeId;
             }
 
+            // Otherwise, left unset, it goes to the rep who serves the customer.
+            if (empty($validated['assigned_employee_id']) && ! empty($validated['customer_id'])) {
+                $validated['assigned_employee_id'] = Customer::find($validated['customer_id'])?->defaultSalesRepId();
+            }
+
             // Fetch all products to get their names
             $productIds = collect($validated['items'])->pluck('product_id')->unique()->toArray();
             $products = Product::whereIn('id', $productIds)->get()->keyBy('id');

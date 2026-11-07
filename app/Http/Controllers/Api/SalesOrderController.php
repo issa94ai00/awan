@@ -395,8 +395,16 @@ class SalesOrderController extends Controller
         // employee. Omitting it falls back to the signed-in user's employee
         // record rather than leaving the order unattributed — an order nobody
         // owns has no one to chase it, and drops out of "my orders" everywhere.
-        $validated['assigned_employee_id'] = $validated['assigned_employee_id']
-            ?? Employee::where('user_id', auth()->id())->value('id');
+        //
+        // A rep's order is always their own, whatever the request says; left
+        // unset, it goes to the rep who serves the customer before the
+        // signed-in user.
+        $ownEmployeeId = Employee::where('user_id', auth()->id())->value('id');
+        $validated['assigned_employee_id'] = $request->user()?->isSalesScoped()
+            ? $ownEmployeeId
+            : ($validated['assigned_employee_id']
+                ?? \App\Models\Customer::find($validated['customer_id'])?->defaultSalesRepId()
+                ?? $ownEmployeeId);
 
         // Derived from the last id, not the row count: counting reuses a number
         // the moment any order is deleted.
@@ -559,7 +567,7 @@ class SalesOrderController extends Controller
             }
         }
 
-        $salesOrder->load(['customer', 'creator', 'items.product', 'items.variant', 'items.productUnit', 'items.allocations', 'quote', 'fulfillmentWarehouse', 'expenses']);
+        $salesOrder->load(['customer', 'creator', 'assignedEmployee:id,first_name,last_name', 'items.product', 'items.variant', 'items.productUnit', 'items.allocations', 'quote', 'fulfillmentWarehouse', 'expenses']);
 
         return response()->json([
             'success' => true,
@@ -686,7 +694,8 @@ class SalesOrderController extends Controller
         // is covering the round. A request that leaves the field out keeps the
         // current owner rather than clearing it, so editing a delivery address
         // cannot silently orphan the order.
-        $hasAssignedEmployeeInput = $request->has('assigned_employee_id');
+        // A rep cannot hand an order to someone else (back-office only).
+        $hasAssignedEmployeeInput = $request->has('assigned_employee_id') && ! $scoped;
         if (! $hasAssignedEmployeeInput) {
             $validated['assigned_employee_id'] = $salesOrder->assigned_employee_id;
         }

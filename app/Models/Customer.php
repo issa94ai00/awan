@@ -143,6 +143,47 @@ class Customer extends Model
     }
 
     /**
+     * The rep a new sale for this customer is credited to by default: the
+     * primary one, or — with no primary set — the only employee linked.
+     */
+    public function defaultSalesRepId(): ?int
+    {
+        if ($this->employee_id) {
+            return (int) $this->employee_id;
+        }
+
+        $linked = $this->customerEmployees()->pluck('employees.id');
+
+        return $linked->count() === 1 ? (int) $linked->first() : null;
+    }
+
+    /**
+     * Who serves this customer, set outright (an admin's decision): every
+     * employee in $employeeIds is linked, $primaryId — linked too — is the
+     * one sales default to, and anyone else is unlinked. The legacy
+     * employee_id column follows the primary, so the rep's customer list and
+     * every screen reading it agree.
+     *
+     * @param  array<int,int|string>  $employeeIds
+     */
+    public function setSalesReps(?int $primaryId, array $employeeIds): void
+    {
+        $ids = collect($employeeIds)->map(fn ($id) => (int) $id)->filter();
+        if ($primaryId) {
+            $ids->push($primaryId);
+        }
+
+        $this->customerEmployees()->sync(
+            $ids->unique()->values()->mapWithKeys(fn ($id) => [
+                $id => ['is_primary' => $primaryId !== null && $id === $primaryId],
+            ])->all()
+        );
+
+        $this->employee_id = $primaryId ?: null;
+        $this->saveQuietly();
+    }
+
+    /**
      * Records that an employee now serves this customer.
      *
      * Called whenever a rep raises an order for someone: taking the sale is

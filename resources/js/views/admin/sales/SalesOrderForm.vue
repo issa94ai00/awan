@@ -292,6 +292,25 @@
                             style="width: 100%"
                         />
                     </el-form-item>
+
+                    <!-- Who the order is credited to: the customer's own rep by
+                         default; a rep's orders are always their own. -->
+                    <el-form-item :label="$t('sales_representative')">
+                        <el-select
+                            v-model="form.assigned_employee_id"
+                            filterable
+                            :clearable="!isSellsRole"
+                            :disabled="isSellsRole"
+                            :loading="employeesLoading"
+                            :placeholder="$t('so_rep_placeholder')"
+                            style="width: 100%"
+                        >
+                            <el-option v-for="e in salesEmployees" :key="e.id" :label="e.name" :value="e.id" />
+                        </el-select>
+                        <small v-if="repFromCustomer && form.assigned_employee_id === repFromCustomer" class="rep-hint">
+                            <i class="fas fa-link"></i> {{ $t('so_rep_from_customer') }}
+                        </small>
+                    </el-form-item>
                 </div>
 
                 <!-- ── Lines Section ── -->
@@ -1283,6 +1302,7 @@ const pieceUnit = (name) => ({
 
 const blank = () => ({
     customer_id: null,
+    assigned_employee_id: null,
     order_date: today(),
     expected_delivery: inDays(3),
     fulfillment_type: 'ship',
@@ -1393,10 +1413,57 @@ const searchCustomers = (query) => {
     }, 250);
 };
 
+// ── Sales rep ──────────────────────────────────────────────────────────
+const salesEmployees = ref([]);
+const employeesLoading = ref(false);
+// The rep the selected customer is served by, when the form took it from them.
+const repFromCustomer = ref(null);
+
+const ensureEmployeeOption = (id, name) => {
+    if (id && !salesEmployees.value.some((e) => e.id === id)) {
+        salesEmployees.value = [...salesEmployees.value, { id, name: name || `#${id}` }];
+    }
+};
+
+const fetchSalesEmployees = async () => {
+    employeesLoading.value = true;
+    try {
+        const { data } = await api.get('/sales-employees');
+        const list = Array.isArray(data?.data) ? data.data : (Array.isArray(data?.data?.employees) ? data.data.employees : []);
+        const current = salesEmployees.value;
+        salesEmployees.value = list.map((e) => ({ id: e.id, name: e.name || `#${e.id}` }));
+        current.forEach((e) => ensureEmployeeOption(e.id, e.name));
+    } catch {
+        // The field stays usable with whatever it already holds.
+    } finally {
+        employeesLoading.value = false;
+    }
+    // A rep's orders are always their own.
+    if (isSellsRole.value && authStore.user?.employee_id) {
+        form.assigned_employee_id = authStore.user.employee_id;
+        ensureEmployeeOption(authStore.user.employee_id, authStore.user.name);
+    }
+};
+
+/** A customer's own rep becomes the order's, unless the seller is a rep. */
+const applyCustomerRep = (customer) => {
+    const previous = repFromCustomer.value;
+    repFromCustomer.value = customer?.employee_id || null;
+    if (isSellsRole.value || amending.value) return;
+    if (customer?.employee_id) {
+        form.assigned_employee_id = customer.employee_id;
+        ensureEmployeeOption(customer.employee_id, customer.sales_rep?.name);
+    } else if (previous && form.assigned_employee_id === previous) {
+        // The last customer's rep, filled in for them: not this customer's.
+        form.assigned_employee_id = null;
+    }
+};
+
 const onCustomerChange = (customerId) => {
     delete errors.customer_id;
     const customer = customerOptions.value.find((c) => c.id === customerId);
     selectedCustomer.value = customer || null;
+    applyCustomerRep(customer);
     if (customer?.address && !form.shipping_address) {
         form.shipping_address = customer.address;
     }
@@ -2242,6 +2309,7 @@ const offerDraft = async () => {
     }
     Object.assign(form, {
         customer_id: saved.customer_id || null,
+        assigned_employee_id: isSellsRole.value ? form.assigned_employee_id : (saved.assigned_employee_id || null),
         order_date: saved.order_date || today(),
         expected_delivery: saved.expected_delivery || inDays(3),
         fulfillment_type: saved.fulfillment_type || 'ship',
@@ -2323,6 +2391,12 @@ const loadOrder = async () => {
 
         form.customer_id = order.customer_id;
         selectedCustomer.value = order.customer || null;
+        form.assigned_employee_id = order.assigned_employee_id || null;
+        repFromCustomer.value = order.customer?.employee_id || null;
+        if (order.assigned_employee) {
+            const e = order.assigned_employee;
+            ensureEmployeeOption(e.id, e.name || [e.first_name, e.last_name].filter(Boolean).join(' '));
+        }
         customerOptions.value = order.customer ? [order.customer] : [];
         form.order_date = order.order_date ? String(order.order_date).slice(0, 10) : today();
         form.expected_delivery = order.expected_delivery ? String(order.expected_delivery).slice(0, 10) : '';
@@ -2419,6 +2493,7 @@ const submit = async (andConfirm) => {
 
     const payload = {
         customer_id: form.customer_id,
+        assigned_employee_id: form.assigned_employee_id || null,
         order_date: form.order_date || null,
         expected_delivery: form.expected_delivery || null,
         fulfillment_type: form.fulfillment_type || 'ship',
@@ -2601,6 +2676,7 @@ onMounted(async () => {
     await Promise.all([
         fetchWarehouses(),
         fetchCategories(),
+        fetchSalesEmployees(),
     ]);
 
     if (orderId) {
@@ -2616,6 +2692,7 @@ onMounted(async () => {
                     customerOptions.value = [cust];
                     form.customer_id = cust.id;
                     selectedCustomer.value = cust;
+                    applyCustomerRep(cust);
                 }
             } catch {
                 /* ignore */
@@ -2871,9 +2948,16 @@ onUnmounted(() => {
     margin-bottom: 0.5rem;
 }
 
+.rep-hint {
+    display: block;
+    margin-top: 0.2rem;
+    font-size: 0.72rem;
+    color: #047857;
+}
+
 .head-subgrid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 0 1.25rem;
     margin-bottom: 0.5rem;
 }

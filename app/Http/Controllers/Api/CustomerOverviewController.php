@@ -29,6 +29,8 @@ class CustomerOverviewController extends Controller
             'success' => true,
             'data' => [
                 'customer' => $customer,
+                // Every employee serving the customer, the primary marked.
+                'sales_reps' => CustomerSalesRepController::repsOf($customer)['sales_reps'],
                 'metrics' => $this->metrics($customer),
                 'sales_orders' => $this->salesOrders($customer),
                 'invoices' => $this->invoices($customer),
