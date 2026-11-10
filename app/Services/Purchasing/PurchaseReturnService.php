@@ -8,6 +8,7 @@ use App\Models\Supplier;
 use App\Services\Accounting\LedgerPostingService;
 use App\Models\ProductVariant;
 use App\Services\Inventory\InventoryService;
+use App\Support\DocumentNumbers;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -59,9 +60,7 @@ class PurchaseReturnService
             $return = PurchaseReturn::create([
                 // Derived from the last id: counting hands out a number that is
                 // already taken as soon as any return is deleted.
-                'return_number' => 'PRT-'.str_pad(
-                    (string) (((int) PurchaseReturn::withTrashed()->max('id')) + 1), 6, '0', STR_PAD_LEFT
-                ),
+                'return_number' => DocumentNumbers::format('purchase_return', ((int) PurchaseReturn::withTrashed()->max('id')) + 1),
                 'supplier_id' => $attributes['supplier_id'] ?? null,
                 'purchase_receipt_id' => $attributes['purchase_receipt_id'] ?? null,
                 'warehouse_id' => $warehouseId,

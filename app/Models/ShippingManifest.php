@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\DocumentNumbers;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -128,6 +129,6 @@ class ShippingManifest extends Model
 
     public function generateManifestNumber(): string
     {
-        return 'SHP-' . str_pad($this->id ?? ShippingManifest::count() + 1, 6, '0', STR_PAD_LEFT);
+        return DocumentNumbers::format('shipping_manifest', $this->id ?? ShippingManifest::count() + 1);
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\DocumentNumbers;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -92,7 +93,7 @@ class Payroll extends Model
 
     public function generatePayrollNumber(): string
     {
-        return 'PAY-' . str_pad($this->id ?? Payroll::count() + 1, 6, '0', STR_PAD_LEFT);
+        return DocumentNumbers::format('payroll', $this->id ?? Payroll::count() + 1);
     }
 
     public function calculateNetSalary(): void

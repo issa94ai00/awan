@@ -10,6 +10,7 @@ use App\Models\SalesOrderStatusHistory;
 use App\Services\Field\BranchOrderSourcingService;
 use App\Services\Field\FieldScope;
 use App\Services\Sales\SalesOrderWorkflowService;
+use App\Support\DocumentNumbers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -289,7 +290,7 @@ class FieldOrderController extends Controller
                 $order = SalesOrder::create([
                     // Derived from the last id, not a count: counting reuses a
                     // number the moment any order is deleted.
-                    'order_number' => 'SO-' . str_pad((string) (((int) SalesOrder::max('id')) + 1), 6, '0', STR_PAD_LEFT),
+                    'order_number' => DocumentNumbers::format('sales_order', ((int) SalesOrder::max('id')) + 1),
                     'customer_id' => $customer->id,
                     'status' => SalesOrder::STATUS_PENDING,
                     'order_date' => now()->toDateString(),

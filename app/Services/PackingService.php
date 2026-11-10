@@ -8,6 +8,7 @@ use App\Models\PickingList;
 use App\Models\PickingListItem;
 use App\Models\ShippingManifest;
 use App\Models\ShippingManifestItem;
+use App\Support\DocumentNumbers;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -29,7 +30,7 @@ class PackingService
                 'warehouse_id' => $pickingList->warehouse_id,
                 'picking_list_id' => $pickingList->id,
                 'sales_order_id' => $pickingList->sales_order_id,
-                'list_number' => 'PCK-' . str_pad(PackingList::count() + 1, 6, '0', STR_PAD_LEFT),
+                'list_number' => DocumentNumbers::format('packing_list', PackingList::count() + 1),
                 'status' => PackingList::STATUS_PENDING,
                 'total_packages' => 0,
                 'total_weight' => 0,
@@ -209,7 +210,7 @@ class PackingService
         try {
             $manifest = ShippingManifest::create([
                 'warehouse_id' => $warehouseId,
-                'manifest_number' => 'SHP-' . str_pad(ShippingManifest::count() + 1, 6, '0', STR_PAD_LEFT),
+                'manifest_number' => DocumentNumbers::format('shipping_manifest', ShippingManifest::count() + 1),
                 'carrier_id' => $carrierId,
                 'carrier_name' => $carrierName,
                 'status' => ShippingManifest::STATUS_PENDING,

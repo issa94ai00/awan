@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Services\Inventory\InventoryService;
+use App\Support\DocumentNumbers;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
@@ -212,7 +213,7 @@ class CycleCount extends Model
 
     public function generateCountNumber(): string
     {
-        return 'CC-' . str_pad($this->id ?? CycleCount::count() + 1, 6, '0', STR_PAD_LEFT);
+        return DocumentNumbers::format('cycle_count', $this->id ?? CycleCount::count() + 1);
     }
 
     public function calculateVariance(): void

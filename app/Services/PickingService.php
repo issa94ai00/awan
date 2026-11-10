@@ -8,6 +8,7 @@ use App\Models\SalesOrder;
 use App\Models\SalesOrderItem;
 use App\Models\WarehouseBin;
 use App\Models\WarehouseInventory;
+use App\Support\DocumentNumbers;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -92,7 +93,7 @@ class PickingService
                 'sales_order_id' => $order->id,
                 // Derived from the last id: counting reuses a number the moment
                 // any list is deleted, and two concurrent confirmations collide.
-                'list_number' => 'PL-' . str_pad((string) (((int) PickingList::max('id')) + 1), 6, '0', STR_PAD_LEFT),
+                'list_number' => DocumentNumbers::format('picking_list', ((int) PickingList::max('id')) + 1),
                 'priority' => $this->determinePriority($order),
                 'status' => PickingList::STATUS_PENDING,
                 'total_items' => count($quantities),

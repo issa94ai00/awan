@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\DocumentNumbers;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -121,6 +122,6 @@ class SalesContract extends Model
 
     public function generateContractNumber(): string
     {
-        return 'CTR-' . str_pad($this->id ?? SalesContract::count() + 1, 6, '0', STR_PAD_LEFT);
+        return DocumentNumbers::format('sales_contract', $this->id ?? SalesContract::count() + 1);
     }
 }

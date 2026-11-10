@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\BankReconciliation;
 use App\Models\JournalEntryLine;
 use App\Models\LedgerAccount;
+use App\Support\DocumentNumbers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -82,7 +83,7 @@ class BankReconciliationController extends Controller
         }
 
         $reconciliation = BankReconciliation::create($validated + [
-            'reference' => 'BR-'.str_pad((string) (((int) BankReconciliation::max('id')) + 1), 5, '0', STR_PAD_LEFT),
+            'reference' => DocumentNumbers::format('bank_reconciliation', ((int) BankReconciliation::max('id')) + 1, 5),
             'status' => BankReconciliation::STATUS_OPEN,
             'created_by' => auth()->id(),
         ]);

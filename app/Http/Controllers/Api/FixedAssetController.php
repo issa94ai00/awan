@@ -8,6 +8,7 @@ use App\Models\JournalEntryHeader;
 use App\Models\Warehouse;
 use App\Services\Accounting\FixedAssetDepreciation;
 use App\Services\Accounting\LedgerPostingService;
+use App\Support\DocumentNumbers;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -158,9 +159,7 @@ class FixedAssetController extends Controller
         try {
             $asset = DB::transaction(function () use ($validated) {
                 $asset = FixedAsset::create($validated + [
-                    'asset_number' => 'FA-'.str_pad(
-                        (string) (((int) FixedAsset::withTrashed()->max('id')) + 1), 5, '0', STR_PAD_LEFT
-                    ),
+                    'asset_number' => DocumentNumbers::format('fixed_asset', ((int) FixedAsset::withTrashed()->max('id')) + 1, 5),
                     'salvage_value' => $validated['salvage_value'] ?? 0,
                     'accumulated_depreciation' => 0,
                     'status' => FixedAsset::STATUS_ACTIVE,

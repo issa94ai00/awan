@@ -20,6 +20,7 @@ use App\Models\StockMovement;
 use App\Models\SupplierPayment;
 use App\Models\Warehouse;
 use App\Services\CurrencyService;
+use App\Support\DocumentNumbers;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -1592,6 +1593,6 @@ class LedgerPostingService
     {
         $last = JournalEntryHeader::withTrashed()->orderByDesc('id')->lockForUpdate()->first();
 
-        return 'JE-' . str_pad((string) (($last->id ?? 0) + 1), 6, '0', STR_PAD_LEFT);
+        return DocumentNumbers::format('journal_entry', ($last->id ?? 0) + 1);
     }
 }

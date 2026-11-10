@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\DocumentNumbers;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -136,7 +137,7 @@ class Quote extends Model
         $next = ((int) static::max('id')) + 1;
 
         do {
-            $number = 'QT-'.str_pad((string) $next++, 6, '0', STR_PAD_LEFT);
+            $number = DocumentNumbers::format('quote', $next++);
         } while (static::where('quote_number', $number)->exists());
 
         return $number;

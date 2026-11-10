@@ -12,6 +12,7 @@ use App\Services\Accounting\LedgerPostingService;
 use App\Services\Purchasing\PurchaseOrderCostSync;
 use App\Services\Purchasing\SupplierPaymentRecorder;
 use App\Models\SupplierPayment;
+use App\Support\DocumentNumbers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -194,12 +195,7 @@ class PurchaseReceiptController extends Controller
 
         // Derived from the last id: counting reuses a number as soon as any
         // receipt is deleted, and two concurrent requests always collide.
-        $validated['receipt_number'] = 'PR-' . str_pad(
-            (string) (((int) PurchaseReceipt::max('id')) + 1),
-            6,
-            '0',
-            STR_PAD_LEFT
-        );
+        $validated['receipt_number'] = DocumentNumbers::format('purchase_receipt', ((int) PurchaseReceipt::max('id')) + 1);
         $validated['created_by'] = auth()->id();
 
         $inventory = app(\App\Services\Inventory\InventoryService::class);

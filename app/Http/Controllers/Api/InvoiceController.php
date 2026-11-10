@@ -19,6 +19,7 @@ use App\Models\User;
 use App\Services\Accounting\LedgerPostingService;
 use App\Services\Sales\GoodsIssueService;
 use App\Services\Sales\SalesOrderWorkflowService;
+use App\Support\DocumentNumbers;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -259,7 +260,7 @@ class InvoiceController extends Controller
 
         if ($paidAmount > 0) {
             $payment = Payment::create([
-                'payment_number' => 'PAY-' . str_pad((string) (Payment::max('id') + 1), 6, '0', STR_PAD_LEFT),
+                'payment_number' => DocumentNumbers::format('payment', Payment::max('id') + 1),
                 'invoice_id' => $invoice->id,
                 'customer_id' => $customer->id,
                 // The invoice's payment method describes how this money arrived;
@@ -679,7 +680,7 @@ class InvoiceController extends Controller
                 foreach ($validated['expenses'] as $expense) {
                     if (!empty($expense['description']) && (float) ($expense['amount'] ?? 0) > 0) {
                         $createdExpenses[] = Expense::create([
-                            'expense_number' => 'EXP-' . str_pad((string) (((int) Expense::max('id')) + 1), 6, '0', STR_PAD_LEFT),
+                            'expense_number' => DocumentNumbers::format('expense', ((int) Expense::max('id')) + 1),
                             'invoice_id' => $invoice->id,
                             'sales_order_id' => $invoice->sales_order_id,
                             'customer_id' => $invoice->customer_id,
@@ -1130,7 +1131,7 @@ class InvoiceController extends Controller
                     foreach ($validated['expenses'] as $expense) {
                         if (!empty($expense['description']) && (float) ($expense['amount'] ?? 0) > 0) {
                             $newExpense = Expense::create([
-                                'expense_number' => 'EXP-' . str_pad((string) (((int) Expense::max('id')) + 1), 6, '0', STR_PAD_LEFT),
+                                'expense_number' => DocumentNumbers::format('expense', ((int) Expense::max('id')) + 1),
                                 'invoice_id' => $invoice->id,
                                 'sales_order_id' => $invoice->sales_order_id,
                                 'customer_id' => $invoice->customer_id,

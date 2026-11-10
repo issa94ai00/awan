@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\RecordsInBaseCurrency;
+use App\Support\DocumentNumbers;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -116,6 +117,6 @@ class PurchaseReceipt extends Model
 
     public function generateReceiptNumber(): string
     {
-        return 'PR-' . str_pad($this->id ?? PurchaseReceipt::count() + 1, 6, '0', STR_PAD_LEFT);
+        return DocumentNumbers::format('purchase_receipt', $this->id ?? PurchaseReceipt::count() + 1);
     }
 }

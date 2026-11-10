@@ -7,6 +7,7 @@ use App\Services\ErpUpgradeService;
 use App\Models\RmaRequest;
 use App\Models\IntegrationSetting;
 use App\Models\WarehouseBin;
+use App\Support\DocumentNumbers;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
@@ -138,7 +139,7 @@ class ErpUpgradeController extends Controller
         ]);
 
         $rma = RmaRequest::create([
-            'rma_number' => 'RMA-' . time() . '-' . rand(100, 999),
+            'rma_number' => DocumentNumbers::lead('rma') . time() . '-' . rand(100, 999),
             'sales_order_id' => $validated['sales_order_id'],
             'customer_id' => $validated['customer_id'],
             'status' => 'requested',

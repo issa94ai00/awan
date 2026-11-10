@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\RecordsInBaseCurrency;
+use App\Support\DocumentNumbers;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -99,6 +100,6 @@ class Payment extends Model
 
     public function generatePaymentNumber(): string
     {
-        return 'PAY-' . str_pad($this->id ?? Payment::count() + 1, 6, '0', STR_PAD_LEFT);
+        return DocumentNumbers::format('payment', $this->id ?? Payment::count() + 1);
     }
 }

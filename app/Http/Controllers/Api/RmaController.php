@@ -17,6 +17,7 @@ use App\Services\Accounting\LedgerPostingService;
 use App\Services\AuditService;
 use App\Services\Inventory\InventoryService;
 use App\Services\RmaSettlementService;
+use App\Support\DocumentNumbers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -320,7 +321,7 @@ class RmaController extends Controller
                 $lastRma = RmaRequest::orderBy('id', 'desc')->lockForUpdate()->first();
                 $nextId = $lastRma ? $lastRma->id + 1 : 1;
 
-                return 'RMA-'.str_pad($nextId, 6, '0', STR_PAD_LEFT);
+                return DocumentNumbers::format('rma', $nextId);
             });
 
             $rmaRequest = RmaRequest::create([

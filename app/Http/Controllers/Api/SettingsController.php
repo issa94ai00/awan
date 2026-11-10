@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Setting;
+use App\Support\DocumentNumbers;
 use App\Support\ImageStore;
 use App\Support\NumberFormat;
 use App\Services\CurrencyService;
@@ -177,6 +178,12 @@ class SettingsController extends Controller
             ...collect(NumberFormat::OPTIONS)
                 ->mapWithKeys(fn (array $allowed, string $key) => ["settings.$key" => ['nullable', 'string', Rule::in($allowed)]])
                 ->all(),
+            // Document-number prefixes: letters only, the separator is fixed.
+            ...collect(DocumentNumbers::settingKeys())
+                ->mapWithKeys(fn (string $key) => ["settings.$key" => ['nullable', 'string', 'max:'.DocumentNumbers::MAX_LENGTH, 'regex:'.DocumentNumbers::PATTERN]])
+                ->all(),
+        ], [
+            'regex' => 'البادئة تقبل حروفاً وأرقاماً فقط (بلا مسافات أو فواصل).',
         ]);
 
         // 1.234 cannot mean both one-point-two and twelve hundred.
@@ -217,10 +224,19 @@ class SettingsController extends Controller
             unset($data['default_currency']);
         }
 
+        // An emptied prefix field means "back to the default", not "no prefix".
+        foreach (DocumentNumbers::settingKeys() as $key) {
+            if (array_key_exists($key, $data) && trim((string) $data[$key]) === '') {
+                Setting::where('key', $key)->delete();
+                unset($data[$key]);
+            }
+        }
+
         foreach ($data as $key => $value) {
             $this->updateSettingWithAliases($key, $value);
         }
         NumberFormat::forget();
+        DocumentNumbers::forget();
 
         // Replacing a logo used to leave the old file on disk for good — the
         // setting row was simply pointed somewhere else. Each replaced path is

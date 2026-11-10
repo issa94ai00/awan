@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\RecordsInBaseCurrency;
+use App\Support\DocumentNumbers;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -102,6 +103,6 @@ class Expense extends Model
 
     public function generateExpenseNumber(): string
     {
-        return 'EXP-' . str_pad($this->id ?? Expense::count() + 1, 6, '0', STR_PAD_LEFT);
+        return DocumentNumbers::format('expense', $this->id ?? Expense::count() + 1);
     }
 }

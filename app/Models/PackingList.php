@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\DocumentNumbers;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -132,6 +133,6 @@ class PackingList extends Model
 
     public function generateListNumber(): string
     {
-        return 'PCK-' . str_pad($this->id ?? PackingList::count() + 1, 6, '0', STR_PAD_LEFT);
+        return DocumentNumbers::format('packing_list', $this->id ?? PackingList::count() + 1);
     }
 }

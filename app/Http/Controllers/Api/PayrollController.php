@@ -7,6 +7,7 @@ use App\Models\Payroll;
 use App\Models\Employee;
 use App\Models\Attendance;
 use App\Services\Accounting\LedgerPostingService;
+use App\Support\DocumentNumbers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -42,7 +43,7 @@ class PayrollController extends Controller
      */
     private function nextPayrollNumber(): string
     {
-        return 'PAY-' . str_pad((string) (((int) Payroll::max('id')) + 1), 6, '0', STR_PAD_LEFT);
+        return DocumentNumbers::format('payroll', ((int) Payroll::max('id')) + 1);
     }
 
     public function index(Request $request)

@@ -6,6 +6,7 @@ import accessUsersMessages from './locales/access-users';
 import repDashboardMessages from './locales/rep-dashboard';
 import employeeFormMessages from './locales/employee-form';
 import numberSettingsMessages from './locales/number-settings';
+import documentNumberingMessages from './locales/document-numbering';
 
 const messages = {
     en: {
@@ -990,6 +991,7 @@ const messages = {
         register: 'Register',
         logout: 'Logout',
         dashboard: 'Dashboard',
+        documentation: 'Documentation',
         settings: 'Settings',
         profile: 'Profile',
         search: 'Search',
@@ -8026,6 +8028,7 @@ const messages = {
         register: 'التسجيل',
         logout: 'تسجيل الخروج',
         dashboard: 'لوحة التحكم',
+        documentation: 'توثيق النظام',
         settings: 'الإعدادات',
         profile: 'الملف الشخصي',
         search: 'بحث',
@@ -14085,7 +14088,7 @@ const messages = {
 };
 
 // The access-control screens and the rep dashboard keep their strings in ./locales.
-for (const bundle of [accessMessages, accessRolesMessages, accessPermissionsMessages, accessUsersMessages, repDashboardMessages, employeeFormMessages, numberSettingsMessages]) {
+for (const bundle of [accessMessages, accessRolesMessages, accessPermissionsMessages, accessUsersMessages, repDashboardMessages, employeeFormMessages, numberSettingsMessages, documentNumberingMessages]) {
     Object.assign(messages.en, bundle.en);
     Object.assign(messages.ar, bundle.ar);
 }

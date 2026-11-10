@@ -336,6 +336,48 @@
                     </el-form>
                 </section>
 
+                <section v-show="activeSection === 'numbering'" class="settings-section">
+                    <el-form :model="form" label-position="top" @submit.prevent>
+                        <el-alert :title="$t('dn_intro')" type="info" :closable="false" show-icon class="mb-4" />
+
+                        <template v-for="(group, index) in docPrefixGroups" :key="group.key">
+                            <h3 class="sub-head" :class="{ 'sub-head--first': index === 0 }">{{ group.label }}</h3>
+                            <div class="prefix-grid">
+                                <div
+                                    v-for="item in group.types"
+                                    :key="item.type"
+                                    class="prefix-card"
+                                    :class="{ invalid: item.error, changed: form[item.key] !== item.prefix }"
+                                >
+                                    <el-form-item :label="item.label" :error="item.error">
+                                        <el-input
+                                            v-model.trim="form[item.key]"
+                                            :placeholder="item.prefix"
+                                            :maxlength="DOC_PREFIX_MAX"
+                                            dir="ltr"
+                                            class="prefix-input"
+                                        >
+                                            <template #append><span class="prefix-sep" aria-hidden="true">{{ DOC_PREFIX_SEPARATOR }}</span></template>
+                                        </el-input>
+                                    </el-form-item>
+                                    <div class="prefix-sample">
+                                        <small>{{ $t('dn_next_looks_like') }}</small>
+                                        <bdi>{{ item.sample }}</bdi>
+                                    </div>
+                                    <button
+                                        v-if="form[item.key] !== item.prefix"
+                                        type="button"
+                                        class="prefix-default"
+                                        @click="form[item.key] = item.prefix"
+                                    >{{ $t('dn_default', { prefix: item.prefix }) }}</button>
+                                </div>
+                            </div>
+                        </template>
+
+                        <el-button :icon="RefreshLeft" @click="resetDocPrefixes">{{ $t('dn_reset') }}</el-button>
+                    </el-form>
+                </section>
+
                 <section v-show="activeSection === 'contact'" class="settings-section">
                     <el-form :model="form" label-position="top" @submit.prevent>
                         <div class="lang-switch-bar">
@@ -1615,7 +1657,7 @@ import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router';
 import {
     Setting, Money, Phone, Share, Search, Bell, OfficeBuilding, Aim, Brush,
     Message, ChatDotRound, EditPen, CircleCheck, TopRight, Iphone, Monitor, Printer,
-    Plus, Delete, ArrowUp, ArrowDown, Location, Odometer, RefreshLeft
+    Plus, Delete, ArrowUp, ArrowDown, Location, Odometer, RefreshLeft, Tickets
 } from '@element-plus/icons-vue';
 import { useSettingsStore } from '@/stores/settings';
 import { useCurrency } from '@/Composables/useCurrency';
@@ -1634,6 +1676,16 @@ import {
     formatQuantity,
     previewNumberSettings,
 } from '@/utils/numberFormat';
+import {
+    DOC_PREFIX_DEFAULTS,
+    DOC_PREFIX_GROUPS,
+    DOC_PREFIX_KEYS,
+    DOC_PREFIX_MAX,
+    DOC_PREFIX_SEPARATOR,
+    docNumberSample,
+    docPrefixKey,
+    isValidDocPrefix,
+} from '@/utils/documentNumbering';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import currenciesApi from '@/api/currencies';
 
@@ -1655,6 +1707,7 @@ const sectionGroups = computed(() => [
             { key: 'general', label: t('general'), hint: t('settings_hint_general'), icon: Setting },
             { key: 'localization', label: t('currency_and_language'), hint: t('settings_hint_localization'), icon: Money },
             { key: 'numbers', label: t('ns_section'), hint: t('ns_section_hint'), icon: Odometer },
+            { key: 'numbering', label: t('dn_section'), hint: t('dn_section_hint'), icon: Tickets },
         ],
     },
     {
@@ -1686,7 +1739,7 @@ const sectionGroups = computed(() => [
 ]);
 
 const allSections = computed(() => sectionGroups.value.flatMap((group) => group.sections));
-const sectionKeys = ['general', 'localization', 'numbers', 'contact', 'social', 'about', 'vision', 'seo', 'design', 'printing', 'notifications'];
+const sectionKeys = ['general', 'localization', 'numbers', 'numbering', 'contact', 'social', 'about', 'vision', 'seo', 'design', 'printing', 'notifications'];
 
 // Kept in the URL so a reload or a shared link lands on the same section.
 const activeSection = ref(sectionKeys.includes(route.query.section) ? route.query.section : 'general');
@@ -1704,6 +1757,7 @@ const sectionFor = (key) => {
     if (/^(site_|show_)/.test(key)) return 'general';
     if (['default_currency', 'default_language', 'timezone'].includes(key)) return 'localization';
     if (/^number_/.test(key)) return 'numbers';
+    if (/^doc_prefix_/.test(key)) return 'numbering';
     if (/^(contact_|address|working_hours)/.test(key)) return 'contact';
     if (SOCIAL_KEYS.includes(key)) return 'social';
     if (/^meta_|^google_analytics$|^ogImage$/.test(key)) return 'seo';
@@ -1860,6 +1914,7 @@ const form = reactive({
     print_authorized_title: '',
     print_terms: '',
     ...NUMBER_DEFAULTS,
+    ...DOC_PREFIX_DEFAULTS,
 });
 
 const colorPalettes = [
@@ -2466,6 +2521,9 @@ const loadSettings = (settings) => {
     NUMBER_SETTING_KEYS.forEach((key) => {
         form[key] = settings[key] ? String(settings[key]) : NUMBER_DEFAULTS[key];
     });
+    DOC_PREFIX_KEYS.forEach((key) => {
+        form[key] = settings[key] ? String(settings[key]) : DOC_PREFIX_DEFAULTS[key];
+    });
     takeSnapshot();
 };
 
@@ -2640,12 +2698,36 @@ const clientErrors = () => {
     });
     if (analyticsError.value) errors.push({ field: 'google_analytics', section: 'seo', message: `Google Analytics: ${analyticsError.value}` });
     if (separatorConflict.value) errors.push({ field: 'number_thousands_separator', section: 'numbers', message: t('ns_sep_conflict') });
+    docPrefixGroups.value.flatMap((group) => group.types).forEach((item) => {
+        if (item.error) errors.push({ field: item.key, section: 'numbering', message: `${item.label}: ${item.error}` });
+    });
     branches.value.forEach((branch, index) => {
         const error = urlError(branch.map_url);
         if (error) errors.push({ field: 'contact_branches', section: 'contact', message: `${t('settings_branch_map')} (${index + 1}): ${error}` });
     });
     return errors;
 };
+
+/* ---- Document numbering ---- */
+
+const docPrefixGroups = computed(() => DOC_PREFIX_GROUPS.map((group) => ({
+    key: group.key,
+    label: t(`dn_group_${group.key}`),
+    types: group.types.map((item) => {
+        const key = docPrefixKey(item.type);
+        const value = String(form[key] ?? '').trim();
+        return {
+            ...item,
+            key,
+            label: t(`dn_type_${item.type}`),
+            sample: docNumberSample(item, value),
+            // An empty field falls back to the default, so only a filled one can be wrong.
+            error: value && !isValidDocPrefix(value) ? t('dn_invalid', { max: DOC_PREFIX_MAX }) : '',
+        };
+    }),
+})));
+
+const resetDocPrefixes = () => Object.assign(form, DOC_PREFIX_DEFAULTS);
 
 /* ---- Numbers & decimals ---- */
 
@@ -3501,6 +3583,84 @@ onBeforeUnmount(() => {
     font-size: 0.95rem;
     font-weight: 700;
     color: var(--st-text);
+}
+
+/* ── Document numbering ── */
+.prefix-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.9rem 1.1rem;
+}
+
+.prefix-card {
+    position: relative;
+    padding: 0.85rem 0.95rem 0.75rem;
+    border: 1px solid var(--st-border);
+    border-radius: 12px;
+    background: #fff;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.prefix-card.changed {
+    border-color: var(--el-color-primary-light-5, #a0cfff);
+    box-shadow: inset 3px 0 0 var(--el-color-primary, #409eff);
+}
+
+.prefix-card.invalid {
+    border-color: var(--el-color-danger-light-5, #fab6b6);
+}
+
+.prefix-card :deep(.el-form-item) {
+    margin-bottom: 0.5rem;
+}
+
+.prefix-card :deep(.el-form-item__label) {
+    font-weight: 600;
+    padding-bottom: 0.25rem;
+}
+
+.prefix-input :deep(.el-input__inner) {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: none;
+}
+
+.prefix-input :deep(.el-input-group__append) {
+    padding: 0 0.7rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--st-muted, #64748b);
+}
+
+.prefix-sample {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--st-muted, #64748b);
+}
+
+.prefix-sample bdi {
+    direction: ltr;
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.82rem;
+    color: var(--st-text, #0f172a);
+    word-break: break-all;
+}
+
+.prefix-default {
+    margin-top: 0.4rem;
+    padding: 0;
+    border: 0;
+    background: none;
+    font-size: 0.75rem;
+    color: var(--el-color-primary, #409eff);
+    cursor: pointer;
+}
+
+.prefix-default:hover {
+    text-decoration: underline;
 }
 
 /* ── Numbers & decimals ── */

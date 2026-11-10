@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\DocumentNumbers;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -237,7 +238,7 @@ class RmaRequest extends Model
 
     public function generateRmaNumber(): string
     {
-        return 'RMA-' . str_pad($this->id ?? RmaRequest::count() + 1, 6, '0', STR_PAD_LEFT);
+        return DocumentNumbers::format('rma', $this->id ?? RmaRequest::count() + 1);
     }
 
     public function getTotalRefundAmountAttribute(): float

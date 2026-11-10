@@ -7,6 +7,7 @@ use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderItem;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use App\Support\DocumentNumbers;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -432,7 +433,7 @@ class PurchaseOrderController extends Controller
         $next = ((int) PurchaseOrder::max('id')) + 1;
 
         do {
-            $number = 'PO-' . str_pad((string) $next++, 6, '0', STR_PAD_LEFT);
+            $number = DocumentNumbers::format('purchase_order', $next++);
         } while (PurchaseOrder::where('order_number', $number)->exists());
 
         return $number;

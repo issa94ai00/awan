@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\RecordsInBaseCurrency;
+use App\Support\DocumentNumbers;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -390,7 +391,7 @@ class Invoice extends Model
 
     public function generateInvoiceNumber(): string
     {
-        $prefix = 'INV';
+        $prefix = DocumentNumbers::prefix('invoice');
         $date = now()->format('Ymd');
         $random = strtoupper(substr(uniqid(), -4));
         return "{$prefix}-{$date}-{$random}";

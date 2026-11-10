@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\DocumentNumbers;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -93,9 +94,7 @@ class InventoryTransfer extends Model
                 // Derived from the last id, not a count: counting reuses a
                 // number the moment any transfer is deleted, and the column is
                 // unique — so the next insert failed rather than renumbering.
-                $transfer->transfer_number = 'TRF-' . str_pad(
-                    (string) (((int) static::max('id')) + 1), 6, '0', STR_PAD_LEFT
-                );
+                $transfer->transfer_number = DocumentNumbers::format('inventory_transfer', ((int) static::max('id')) + 1);
             }
         });
     }

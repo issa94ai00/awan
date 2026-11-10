@@ -11,6 +11,7 @@ use App\Models\RmaRequest;
 use App\Models\SalesOrder;
 use App\Models\Warehouse;
 use App\Services\Accounting\LedgerPostingService;
+use App\Support\DocumentNumbers;
 
 /**
  * Financial settlement for return requests.
@@ -122,7 +123,7 @@ class RmaSettlementService
                 $storeCredit = $remaining;
             } else {
                 $payment = Payment::create([
-                    'payment_number' => 'REF-'.$rmaRequest->rma_number,
+                    'payment_number' => DocumentNumbers::lead('refund').$rmaRequest->rma_number,
                     'invoice_id' => $invoice?->id,
                     'customer_id' => $rmaRequest->customer_id,
                     'sales_order_id' => $rmaRequest->sales_order_id,

@@ -8,6 +8,7 @@ use App\Models\SalesContract;
 use App\Models\SalesOrder;
 use App\Services\OrderAllocationService;
 use App\Services\Sales\SalesOrderWorkflowService;
+use App\Support\DocumentNumbers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -112,7 +113,7 @@ class EnhancedSalesOrderController extends Controller
             $assignedEmployeeId = App\Models\Employee::where('user_id', auth()->id())->value('id');
 
             $order = SalesOrder::create([
-                'order_number' => 'SO-'.str_pad(SalesOrder::count() + 1, 6, '0', STR_PAD_LEFT),
+                'order_number' => DocumentNumbers::format('sales_order', SalesOrder::count() + 1),
                 'customer_id' => $request->customer_id,
                 'channel_id' => $request->channel_id,
                 'contract_id' => $request->contract_id,
@@ -436,7 +437,7 @@ class EnhancedSalesOrderController extends Controller
 
             $contract = SalesContract::create([
                 'customer_id' => $request->customer_id,
-                'contract_number' => 'CTR-'.str_pad(SalesContract::count() + 1, 6, '0', STR_PAD_LEFT),
+                'contract_number' => DocumentNumbers::format('sales_contract', SalesContract::count() + 1),
                 'start_date' => $request->start_date,
                 'end_date' => $request->end_date,
                 'total_value' => $request->total_value,

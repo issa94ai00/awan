@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\RecordsInBaseCurrency;
+use App\Support\DocumentNumbers;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -208,7 +209,7 @@ class SalesOrder extends Model
 
     public function generateOrderNumber(): string
     {
-        return 'SO-'.str_pad($this->id ?? SalesOrder::count() + 1, 6, '0', STR_PAD_LEFT);
+        return DocumentNumbers::format('sales_order', $this->id ?? SalesOrder::count() + 1);
     }
 
     public function scopeByChannel($query, $channelId)

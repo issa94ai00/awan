@@ -23,6 +23,7 @@ use App\Models\WarehouseInventory;
 use App\Services\Accounting\LedgerPostingService;
 use App\Services\Inventory\InventoryService;
 use App\Services\PickingService;
+use App\Support\DocumentNumbers;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -1878,7 +1879,7 @@ class SalesOrderWorkflowService
     {
         $lastId = (int) (Invoice::orderByDesc('id')->lockForUpdate()->value('id') ?? 0);
 
-        return 'INV-'.now()->format('Ymd').'-'.str_pad((string) ($lastId + 1), 5, '0', STR_PAD_LEFT);
+        return DocumentNumbers::lead('invoice').now()->format('Ymd').'-'.str_pad((string) ($lastId + 1), 5, '0', STR_PAD_LEFT);
     }
 
     private function syncInvoiceStatus(SalesOrder $order, string $status): void

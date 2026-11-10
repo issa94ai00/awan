@@ -5,6 +5,7 @@ namespace App\Services\Sales;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Services\Accounting\LedgerPostingService;
+use App\Support\DocumentNumbers;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -75,7 +76,7 @@ class PaymentRecorder
             $payment = Payment::create([
                 // Derived from the last id: counting reuses a number as soon as
                 // any payment is deleted, and two concurrent collections collide.
-                'payment_number' => 'PAY-' . str_pad((string) (((int) Payment::max('id')) + 1), 6, '0', STR_PAD_LEFT),
+                'payment_number' => DocumentNumbers::format('payment', ((int) Payment::max('id')) + 1),
                 'invoice_id' => $invoice->id,
                 'customer_id' => $invoice->customer_id,
                 'sales_order_id' => $options['sales_order_id'] ?? $invoice->sales_order_id,

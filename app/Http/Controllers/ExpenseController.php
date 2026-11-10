@@ -6,6 +6,7 @@ use App\Models\Expense;
 use App\Models\Invoice;
 use App\Models\SalesOrder;
 use App\Services\Accounting\LedgerPostingService;
+use App\Support\DocumentNumbers;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -250,7 +251,7 @@ class ExpenseController extends Controller
         try {
             $expense = DB::transaction(function () use ($validated, $customerId) {
                 $expense = Expense::create([
-                    'expense_number' => 'EXP-'.str_pad((string) (((int) Expense::max('id')) + 1), 6, '0', STR_PAD_LEFT),
+                    'expense_number' => DocumentNumbers::format('expense', ((int) Expense::max('id')) + 1),
                     'description' => $validated['description'],
                     'amount' => $validated['amount'],
                     'category' => $validated['category'] ?? 'other',

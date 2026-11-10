@@ -7,6 +7,7 @@ use App\Models\Payment;
 use App\Models\Invoice;
 use App\Models\Customer;
 use App\Services\CurrencyService;
+use App\Support\DocumentNumbers;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -318,7 +319,7 @@ class PaymentController extends Controller
         // reached the books looked, to whoever took it, exactly like money that
         // did, and the customer's balance had already moved for it.
         $payment_data = [
-            'payment_number' => 'PAY-' . str_pad((string) (((int) Payment::max('id')) + 1), 6, '0', STR_PAD_LEFT),
+            'payment_number' => DocumentNumbers::format('payment', ((int) Payment::max('id')) + 1),
             'customer_id' => $validated['customer_id'],
             'payment_method' => $validated['payment_method'],
             'payment_date' => $validated['payment_date'] ?? null,

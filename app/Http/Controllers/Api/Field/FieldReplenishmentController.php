@@ -11,6 +11,7 @@ use App\Services\Field\BranchReplenishmentService;
 use App\Services\Field\FieldScope;
 use App\Services\Inventory\InventoryService;
 use App\Services\Inventory\ReplenishmentWorkflowService;
+use App\Support\DocumentNumbers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -241,7 +242,7 @@ class FieldReplenishmentController extends Controller
         try {
             $transfer = DB::transaction(function () use ($validated, $source, $destination, $request) {
                 $transfer = InventoryTransfer::create([
-                    'transfer_number' => 'TRF-' . str_pad((string) (((int) InventoryTransfer::max('id')) + 1), 6, '0', STR_PAD_LEFT),
+                    'transfer_number' => DocumentNumbers::format('inventory_transfer', ((int) InventoryTransfer::max('id')) + 1),
                     'from_warehouse_id' => $source,
                     'to_warehouse_id' => $destination,
                     'status' => InventoryTransfer::STATUS_PENDING,

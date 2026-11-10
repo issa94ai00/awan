@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\DocumentNumbers;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -138,6 +139,6 @@ class CreditNote extends Model
 
     public static function nextNumber(): string
     {
-        return 'CN-' . str_pad((string) (self::withTrashed()->max('id') + 1), 6, '0', STR_PAD_LEFT);
+        return DocumentNumbers::format('credit_note', self::withTrashed()->max('id') + 1);
     }
 }

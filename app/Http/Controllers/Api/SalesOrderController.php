@@ -17,6 +17,7 @@ use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\Accounting\LedgerPostingService;
 use App\Services\Sales\SalesOrderWorkflowService;
+use App\Support\DocumentNumbers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -408,12 +409,7 @@ class SalesOrderController extends Controller
 
         // Derived from the last id, not the row count: counting reuses a number
         // the moment any order is deleted.
-        $validated['order_number'] = 'SO-'.str_pad(
-            (string) (((int) SalesOrder::max('id')) + 1),
-            6,
-            '0',
-            STR_PAD_LEFT
-        );
+        $validated['order_number'] = DocumentNumbers::format('sales_order', ((int) SalesOrder::max('id')) + 1);
         $validated['status'] = SalesOrder::STATUS_PENDING;
         $validated['created_by'] = auth()->id();
 
@@ -489,7 +485,7 @@ class SalesOrderController extends Controller
                 foreach ($expensesInput as $exp) {
                     if (! empty($exp['description']) && (float) ($exp['amount'] ?? 0) > 0) {
                         $createdExpenses[] = Expense::create([
-                            'expense_number' => 'EXP-'.str_pad((string) (((int) Expense::max('id')) + 1), 6, '0', STR_PAD_LEFT),
+                            'expense_number' => DocumentNumbers::format('expense', ((int) Expense::max('id')) + 1),
                             'sales_order_id' => $salesOrder->id,
                             'customer_id' => $salesOrder->customer_id,
                             'description' => $exp['description'],
@@ -817,7 +813,7 @@ class SalesOrderController extends Controller
                         foreach ($expensesInput as $exp) {
                             if (! empty($exp['description']) && (float) ($exp['amount'] ?? 0) > 0) {
                                 $createdExpenses[] = Expense::create([
-                                    'expense_number' => 'EXP-'.str_pad((string) (((int) Expense::max('id')) + 1), 6, '0', STR_PAD_LEFT),
+                                    'expense_number' => DocumentNumbers::format('expense', ((int) Expense::max('id')) + 1),
                                     'sales_order_id' => $salesOrder->id,
                                     'customer_id' => $salesOrder->customer_id,
                                     'description' => $exp['description'],

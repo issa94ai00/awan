@@ -24,6 +24,7 @@ use App\Services\Inventory\InventoryCostingService;
 use App\Services\Inventory\InventoryService;
 use App\Services\PackingService;
 use App\Services\PickingService;
+use App\Support\DocumentNumbers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -1624,7 +1625,7 @@ class WmsController extends Controller
         $count = CycleCount::create([
             'warehouse_id' => $validated['warehouse_id'],
             'bin_id' => $validated['bin_id'] ?? null,
-            'count_number' => 'CC-'.str_pad(CycleCount::count() + 1, 6, '0', STR_PAD_LEFT),
+            'count_number' => DocumentNumbers::format('cycle_count', CycleCount::count() + 1),
             'type' => $validated['type'],
             'status' => CycleCount::STATUS_PENDING,
             'notes' => $validated['notes'] ?? null,

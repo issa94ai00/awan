@@ -6,6 +6,7 @@ use App\Models\PurchaseReceipt;
 use App\Models\Supplier;
 use App\Models\SupplierPayment;
 use App\Services\Accounting\LedgerPostingService;
+use App\Support\DocumentNumbers;
 use RuntimeException;
 
 /**
@@ -57,12 +58,7 @@ class SupplierPaymentRecorder
         $payment = SupplierPayment::create(array_merge($data, [
             'supplier_id' => $supplier->id,
             'amount' => $amount,
-            'payment_number' => 'SPY-'.str_pad(
-                (string) (((int) SupplierPayment::withTrashed()->max('id')) + 1),
-                6,
-                '0',
-                STR_PAD_LEFT
-            ),
+            'payment_number' => DocumentNumbers::format('supplier_payment', ((int) SupplierPayment::withTrashed()->max('id')) + 1),
             // Overwritten rather than defaulted: `nullable|date` lets an
             // explicit null through, and the column will not take one.
             'payment_date' => ($data['payment_date'] ?? null) ?: now()->toDateString(),

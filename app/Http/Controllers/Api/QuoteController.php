@@ -9,6 +9,7 @@ use App\Models\Product;
 use App\Models\Quote;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderStatusHistory;
+use App\Support\DocumentNumbers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -306,7 +307,7 @@ class QuoteController extends Controller
             }
 
             $salesOrder = SalesOrder::create([
-                'order_number' => 'SO-'.str_pad((string) (((int) SalesOrder::max('id')) + 1), 6, '0', STR_PAD_LEFT),
+                'order_number' => DocumentNumbers::format('sales_order', ((int) SalesOrder::max('id')) + 1),
                 'customer_id' => $quote->customer_id,
                 'quote_id' => $quote->id,
                 'status' => SalesOrder::STATUS_PENDING,

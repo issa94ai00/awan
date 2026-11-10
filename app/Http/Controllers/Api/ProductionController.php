@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\ProductionOrder;
 use App\Models\Product;
+use App\Support\DocumentNumbers;
 use Illuminate\Http\Request;
 
 class ProductionController extends Controller
@@ -50,7 +51,7 @@ class ProductionController extends Controller
             'notes' => 'nullable|string|max:1000',
         ]);
 
-        $validated['order_number'] = 'PROD-' . str_pad(ProductionOrder::count() + 1, 6, '0', STR_PAD_LEFT);
+        $validated['order_number'] = DocumentNumbers::format('production_order', ProductionOrder::count() + 1);
         $validated['status'] = ProductionOrder::STATUS_PENDING;
         $validated['created_by'] = auth()->id();
 

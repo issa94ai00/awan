@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\DocumentNumbers;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -158,6 +159,6 @@ class PickingList extends Model
 
     public function generateListNumber(): string
     {
-        return 'PL-' . str_pad($this->id ?? PickingList::count() + 1, 6, '0', STR_PAD_LEFT);
+        return DocumentNumbers::format('picking_list', $this->id ?? PickingList::count() + 1);
     }
 }
