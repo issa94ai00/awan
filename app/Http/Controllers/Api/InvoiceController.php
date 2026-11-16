@@ -24,6 +24,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use App\Support\BelowCostWarnings;
 use RuntimeException;
 use Illuminate\Database\QueryException;
 
@@ -790,6 +791,7 @@ class InvoiceController extends Controller
                 ],
                 'accounting_warning' => $postingError,
                 'inventory_warnings' => $stockWarnings ?: null,
+                'warnings' => BelowCostWarnings::forLines($invoice->items) ?: null,
             ], 201);
 
         } catch (ValidationException $e) {
@@ -1167,6 +1169,7 @@ class InvoiceController extends Controller
                 'success' => true,
                 'message' => 'تم تحديث الفاتورة بنجاح',
                 'data' => new InvoiceResource($invoice->load('items.product', 'items.variant', 'expenses')),
+                'warnings' => BelowCostWarnings::forLines($invoice->items) ?: null,
             ]);
 
         } catch (ValidationException $e) {

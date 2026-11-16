@@ -214,6 +214,7 @@
                                             <span v-if="lineVsOrder(item).before">· {{ $t('rc_received_before_n', { n: lineVsOrder(item).before }) }}</span>
                                             <span v-if="lineVsOrder(item).state === 'short'" class="pf-badge is-warn">{{ $t('rc_short_n', { n: lineVsOrder(item).diff }) }}</span>
                                             <span v-else-if="lineVsOrder(item).state === 'over'" class="pf-badge is-danger">{{ $t('rc_over_n', { n: lineVsOrder(item).diff }) }}</span>
+                                            <span v-if="lineVsOrder(item).overTolerance" class="pf-badge is-danger"><i class="fas fa-triangle-exclamation"></i> {{ $t('rc_over_tolerance_badge', { pct: lineVsOrder(item).overPct }) }}</span>
                                             <span v-else class="pf-badge is-ok"><i class="fas fa-check"></i> {{ $t('rc_matches_order') }}</span>
                                         </template>
                                     </div>
@@ -619,17 +620,27 @@ const orderLineFor = (item) => {
     return orderLines.value.find((line) => line.product_id === item.product_id && !line.product_variant_id);
 };
 
+/**
+ * Receiving more than this share above what the order still expects is
+ * flagged on the line and confirmed separately on save. Small overages are
+ * normal (packs, rounding); a large one is usually a typo or a unit mix-up.
+ */
+const OVER_RECEIPT_TOLERANCE = 0.10;
+
 /** How a receipt line compares with what the request still expects. */
 const lineVsOrder = (item) => {
     const line = orderLineFor(item);
     if (!line) return { state: 'extra' };
     const expected = line.remaining_quantity > 0 ? line.remaining_quantity : line.quantity;
     const qty = num(item.quantity);
+    const overPct = expected > 0 && qty > expected ? Math.round(((qty - expected) / expected) * 100) : 0;
     return {
         ordered: line.quantity,
         before: line.received_quantity,
         diff: Math.abs(qty - expected),
         state: qty < expected ? 'short' : (qty > expected ? 'over' : 'match'),
+        overPct,
+        overTolerance: expected > 0 && qty > expected * (1 + OVER_RECEIPT_TOLERANCE),
     };
 };
 
@@ -1166,10 +1177,29 @@ const save = async () => {
             return;
         }
         // A delivery that differs from its request is normal, but it should
-        // be a decision rather than a slip.
+        // be a decision rather than a slip. Lines well over the order get
+        // their own, specific question.
+        const overLines = linkedOrder.value
+            ? form.items.filter((item) => item.product_id && lineVsOrder(item).overTolerance)
+            : [];
+        const limit = Math.round(OVER_RECEIPT_TOLERANCE * 100);
         const off = linkedOrder.value ? form.items.filter((item) => lineVsOrder(item).state !== 'match').length : 0;
         const missing = linkedOrder.value ? missingOrderLines.value.length : 0;
-        if (off + missing > 0) {
+        if (overLines.length) {
+            try {
+                await ElMessageBox.confirm(
+                    t('rc_over_tolerance_message', {
+                        limit,
+                        lines: overLines.map((item) => `${item.product_name || cache.rowOf(item.pick)?.name_ar || orderLineFor(item)?.product?.name_ar || '#' + item.product_id} (+${lineVsOrder(item).overPct}%)`).join('، '),
+                    }),
+                    t('rc_over_tolerance_title', { limit }),
+                    { type: 'warning', confirmButtonText: t('save_receipt'), cancelButtonText: t('rc_review_lines') },
+                );
+            } catch {
+                linesRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                return;
+            }
+        } else if (off + missing > 0) {
             try {
                 await ElMessageBox.confirm(
                     t('rc_differs_from_order_message', { lines: off + missing }),

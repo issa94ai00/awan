@@ -114,3 +114,28 @@ it('keeps barcodes unique across products, variants and units', function () {
     $other->update(['barcode' => '  ']);
     expect($other->fresh()->barcode)->toBeNull();
 });
+
+it('warns when an invoice line sells below cost, and stays quiet otherwise', function () {
+    $below = $this->actingAs($this->user)->postJson('/api/v1/invoices', [
+        'items' => [['product_id' => $this->product->id, 'quantity' => 2, 'unit_price' => 30, 'warehouse_id' => $this->warehouse->id]],
+    ])->assertCreated();
+
+    expect($below->json('warnings'))->toHaveCount(1)
+        ->and($below->json('warnings.0'))->toContain('أقل من التكلفة');
+
+    $fine = $this->actingAs($this->user)->postJson('/api/v1/invoices', [
+        'items' => [['product_id' => $this->product->id, 'quantity' => 1, 'unit_price' => 100, 'warehouse_id' => $this->warehouse->id]],
+    ])->assertCreated();
+
+    expect($fine->json('warnings'))->toBeNull();
+});
+
+it('compares a pack price per base unit against cost', function () {
+    $lines = [(object) ['product_id' => $this->product->id, 'product_variant_id' => null, 'quantity' => 1, 'unit_price' => 200, 'unit_multiplier' => 6, 'discount' => 0]];
+
+    // 200 for a pack of 6 is 33.33 a piece, under the 40 it cost.
+    expect(\App\Support\BelowCostWarnings::forLines($lines))->toHaveCount(1);
+
+    $lines[0]->unit_price = 300;
+    expect(\App\Support\BelowCostWarnings::forLines($lines))->toBe([]);
+});

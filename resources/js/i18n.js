@@ -7,6 +7,7 @@ import repDashboardMessages from './locales/rep-dashboard';
 import employeeFormMessages from './locales/employee-form';
 import numberSettingsMessages from './locales/number-settings';
 import documentNumberingMessages from './locales/document-numbering';
+import dataQualityMessages from './locales/data-quality';
 
 const messages = {
     en: {
@@ -14088,7 +14089,7 @@ const messages = {
 };
 
 // The access-control screens and the rep dashboard keep their strings in ./locales.
-for (const bundle of [accessMessages, accessRolesMessages, accessPermissionsMessages, accessUsersMessages, repDashboardMessages, employeeFormMessages, numberSettingsMessages, documentNumberingMessages]) {
+for (const bundle of [accessMessages, accessRolesMessages, accessPermissionsMessages, accessUsersMessages, repDashboardMessages, employeeFormMessages, numberSettingsMessages, documentNumberingMessages, dataQualityMessages]) {
     Object.assign(messages.en, bundle.en);
     Object.assign(messages.ar, bundle.ar);
 }

@@ -23,6 +23,7 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
+use App\Support\BelowCostWarnings;
 
 /**
  * Sales orders.
@@ -545,6 +546,7 @@ class SalesOrderController extends Controller
                 : ($execution ? 'تم إنشاء طلب البيع وتأكيده' : 'تم إنشاء طلب البيع بنجاح'),
             'data' => $salesOrder,
             'execution' => $execution,
+            'warnings' => BelowCostWarnings::forLines($salesOrder->items) ?: null,
         ], 201);
     }
 
@@ -868,6 +870,7 @@ class SalesOrderController extends Controller
                 ? 'تم حفظ التعديلات كإصدار جديد ('.$salesOrder->revision.') مع الاحتفاظ بالإصدار السابق ('.$revision->revision.').'
                 : 'تم تحديث طلب البيع بنجاح',
             'data' => $salesOrder,
+            'warnings' => BelowCostWarnings::forLines($salesOrder->items) ?: null,
             'revision' => $revision ? [
                 'previous' => $revision->revision,
                 'current' => (int) $salesOrder->revision,

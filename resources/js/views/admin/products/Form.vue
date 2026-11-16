@@ -129,6 +129,9 @@
                                 <el-col :xs="24" :md="6">
                                     <el-form-item :label="$t('the_price')" prop="price">
                                         <el-input-number v-model="form.price" :min="0" :precision="2" size="large" style="width:100%" />
+                                        <div v-if="belowCost(form.price)" class="below-cost-hint">
+                                            <i class="fas fa-triangle-exclamation"></i> {{ $t('dq_below_cost_hint', { cost: form.cost_price }) }}
+                                        </div>
                                     </el-form-item>
                                 </el-col>
                                 <el-col :xs="24" :md="6">
@@ -139,6 +142,9 @@
                                 <el-col :xs="24" :md="6">
                                     <el-form-item :label="$t('discounted_price')">
                                         <el-input-number v-model="form.sale_price" :min="0" :precision="2" size="large" style="width:100%" />
+                                        <div v-if="belowCost(form.sale_price)" class="below-cost-hint">
+                                            <i class="fas fa-triangle-exclamation"></i> {{ $t('dq_below_cost_hint', { cost: form.cost_price }) }}
+                                        </div>
                                     </el-form-item>
                                 </el-col>
                                 <el-col :xs="24" :md="6">
@@ -731,6 +737,10 @@ const form = reactive({
     seo_keywords: ''
 });
 
+// Selling below cost is allowed (clearance, a promised price) but should be
+// a choice: flag a price under the cost while it is being typed.
+const belowCost = (price) => Number(price) > 0 && Number(form.cost_price) > 0 && Number(price) < Number(form.cost_price);
+
 const rules = {
     name_ar: [{ required: true, message: window.t('product_name_in_arabic_is_required'), trigger: 'blur' }],
     // Only 147 of the 1,804 products carry an English name and only 444 a Latin
@@ -1211,6 +1221,12 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.below-cost-hint {
+    margin-top: 4px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--el-color-danger);
+}
 .products-form {
     padding: 0;
 }
