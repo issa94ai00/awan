@@ -3,11 +3,24 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Models\Concerns\GuardsDeletionWithHistory;
 use Illuminate\Database\Eloquent\Model;
 
 class Customer extends Model
 {
-    use HasFactory;
+    use HasFactory, GuardsDeletionWithHistory;
+
+    protected static function deletionBlockers(): array
+    {
+        return [
+        'invoices' => ['customer_id', 'فواتير'],
+        'sales_orders' => ['customer_id', 'طلبات بيع'],
+        'payments' => ['customer_id', 'دفعات'],
+        'credit_notes' => ['customer_id', 'إشعارات دائنة'],
+        'quotes' => ['customer_id', 'عروض أسعار'],
+        'rma_requests' => ['customer_id', 'مرتجعات'],
+        ];
+    }
 
     protected $fillable = [
         'name',

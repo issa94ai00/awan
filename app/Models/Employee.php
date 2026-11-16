@@ -3,11 +3,23 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Models\Concerns\GuardsDeletionWithHistory;
 use Illuminate\Database\Eloquent\Model;
 
 class Employee extends Model
 {
-    use HasFactory;
+    use HasFactory, GuardsDeletionWithHistory;
+
+    protected static function deletionBlockers(): array
+    {
+        return [
+        'employee_commissions' => ['employee_id', 'عمولات'],
+        'payrolls' => ['employee_id', 'رواتب'],
+        'invoices' => ['assigned_employee_id', 'فواتير'],
+        'sales_orders' => ['assigned_employee_id', 'طلبات بيع'],
+        'journal_entry_lines' => ['employee_id', 'قيود محاسبية'],
+        ];
+    }
 
     protected $fillable = [
         'user_id',

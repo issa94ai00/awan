@@ -81,19 +81,34 @@ class WarehouseInventory extends Model
         return $this->belongsTo(WarehouseBin::class);
     }
 
+    /**
+     * Keyed by product and warehouse — the table has no warehouse_inventory_id.
+     * Eager loads match on product only; filter by warehouse_id when grouping.
+     */
     public function batches()
     {
-        return $this->hasMany(ProductBatch::class);
+        return $this->hasMany(ProductBatch::class, 'product_id', 'product_id')
+            ->when($this->warehouse_id, fn ($q) => $q->where('warehouse_id', $this->warehouse_id));
     }
 
+    /**
+     * Keyed by product and warehouse — the table has no warehouse_inventory_id.
+     * Eager loads match on product only; filter by warehouse_id when grouping.
+     */
     public function serialNumbers()
     {
-        return $this->hasMany(ProductSerialNumber::class);
+        return $this->hasMany(ProductSerialNumber::class, 'product_id', 'product_id')
+            ->when($this->warehouse_id, fn ($q) => $q->where('warehouse_id', $this->warehouse_id));
     }
 
+    /**
+     * Keyed by product and warehouse — the table has no warehouse_inventory_id.
+     * Eager loads match on product only; filter by warehouse_id when grouping.
+     */
     public function reorderAlerts()
     {
-        return $this->hasMany(ReorderAlert::class);
+        return $this->hasMany(ReorderAlert::class, 'product_id', 'product_id')
+            ->when($this->warehouse_id, fn ($q) => $q->where('warehouse_id', $this->warehouse_id));
     }
 
     /* ------------------------------------------------------------------ *

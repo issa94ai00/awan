@@ -3,11 +3,22 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Models\Concerns\GuardsDeletionWithHistory;
 use Illuminate\Database\Eloquent\Model;
 
 class Warehouse extends Model
 {
-    use HasFactory;
+    use HasFactory, GuardsDeletionWithHistory;
+
+    protected static function deletionBlockers(): array
+    {
+        return [
+        'stock_movements' => ['warehouse_id', 'حركات مخزون'],
+        'inventory_cost_layers' => ['warehouse_id', 'طبقات تكلفة'],
+        'invoices' => ['warehouse_id', 'فواتير'],
+        'purchase_receipts' => ['warehouse_id', 'إيصالات استلام'],
+        ];
+    }
 
     protected $fillable = [
         'name',

@@ -26,6 +26,12 @@ use Illuminate\Support\Facades\DB;
  * regardless of status — that is what the balance has actually been tracking
  * all along.
  *
+ * Correction (2026-11-16): cancelInvoice() takes the full total off the
+ * balance, so a cancelled invoice carries no receivable — only its payment,
+ * as credit (-paid). Likewise an invoice paid beyond its total holds the
+ * excess as credit, which due_amount (clamped at 0) cannot show. Summing raw
+ * due_amount put cancelled unpaid invoices back on the customer's debt.
+ *
  * One further adjustment isn't visible on any invoice: an RMA settled as
  * store credit beyond what the original invoice owed (RmaSettlementService)
  * reduces the balance with nothing to show for it on the invoice itself — but
@@ -55,7 +61,8 @@ class CustomersRebuildBalance extends Command
         $dueByCustomer = DB::table('invoices')
             ->whereNotNull('customer_id')
             ->groupBy('customer_id')
-            ->selectRaw('customer_id, COALESCE(SUM(due_amount), 0) AS due')
+            ->selectRaw("customer_id, COALESCE(SUM(CASE WHEN status = 'cancelled' THEN -paid_amount
+                ELSE due_amount - GREATEST(paid_amount - total, 0) END), 0) AS due")
             ->pluck('due', 'customer_id');
 
         $storeCreditByCustomer = DB::table('credit_notes')
@@ -63,6 +70,24 @@ class CustomersRebuildBalance extends Command
             ->groupBy('customer_id')
             ->selectRaw('customer_id, COALESCE(SUM(store_credit_amount), 0) AS credit')
             ->pluck('credit', 'customer_id');
+
+        $purchases = DB::table('invoices')
+            ->whereNotNull('customer_id')
+            ->where('status', '!=', 'cancelled')
+            ->groupBy('customer_id')
+            ->selectRaw('customer_id, SUM(total) AS total, MAX(DATE(created_at)) AS last_at')
+            ->get()->keyBy('customer_id');
+
+        if (! $dryRun) {
+            // Nothing maintains these caches incrementally; refresh them here.
+            foreach (Customer::orderBy('id')->get(['id', 'total_purchases', 'last_purchase_at']) as $c) {
+                $row = $purchases[$c->id] ?? null;
+                DB::table('customers')->where('id', $c->id)->update([
+                    'total_purchases' => round((float) ($row->total ?? 0), 5),
+                    'last_purchase_at' => $row->last_at ?? null,
+                ]);
+            }
+        }
 
         $drifted = [];
         $repaired = 0;

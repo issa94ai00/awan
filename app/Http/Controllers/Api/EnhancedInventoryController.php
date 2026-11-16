@@ -49,7 +49,8 @@ class EnhancedInventoryController extends Controller
     {
         $warehouse = Warehouse::with([
             'inventory' => function($q) {
-                $q->with('product', 'variant', 'batches');
+                // Batches come once at warehouse level below.
+                $q->with('product', 'variant');
             },
             'batches',
             'serialNumbers'

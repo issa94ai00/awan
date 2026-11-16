@@ -1461,6 +1461,13 @@ class InvoiceController extends Controller
             return 'الفاتورة ملغاة ولا يمكن إعادة تفعيلها. أنشئ فاتورة جديدة بدلاً منها.';
         }
 
+        // A return already reversed the sale (revenue, receivable, refund);
+        // cancelling on top of it reversed it a second time.
+        if ($newStatus === Invoice::STATUS_CANCELLED
+            && $invoice->creditNotes()->where('status', '!=', 'cancelled')->exists()) {
+            return 'على الفاتورة إشعار دائن (مرتجع) قائم؛ لا يمكن إلغاؤها فوقه.';
+        }
+
         if (! $invoice->canMoveTo($newStatus)) {
             return $invoice->status === Invoice::STATUS_DELIVERED && $newStatus === Invoice::STATUS_CANCELLED
                 ? 'سُلّمت البضاعة؛ أعدها عبر مرتجع مبيعات بدلاً من إلغاء الفاتورة.'
@@ -1511,7 +1518,8 @@ class InvoiceController extends Controller
                 Customer::find($invoice->customer_id)?->updateBalance(-1 * (float) $invoice->total);
             }
 
-            $invoice->update(['status' => Invoice::STATUS_CANCELLED, 'paid_at' => null]);
+            // Nothing is owed on a cancelled sale; any payment stays as credit.
+            $invoice->update(['status' => Invoice::STATUS_CANCELLED, 'paid_at' => null, 'due_amount' => 0]);
         });
     }
 

@@ -249,7 +249,7 @@ class InventoryAllocationService
                     'quarantined_quantity' => $inventory->quarantined_quantity,
                     'reorder_point' => $inventory->reorder_point,
                     'is_below_reorder' => $inventory->isBelowReorderPoint(),
-                    'batches' => $inventory->batches->map(function ($batch) {
+                    'batches' => $inventory->batches->where('warehouse_id', $inventory->warehouse_id)->values()->map(function ($batch) {
                         return [
                             'batch_number' => $batch->batch_number,
                             'quantity' => $batch->quantity,

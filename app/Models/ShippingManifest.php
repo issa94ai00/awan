@@ -47,11 +47,6 @@ class ShippingManifest extends Model
         return $this->belongsTo(Warehouse::class);
     }
 
-    public function carrier()
-    {
-        return $this->belongsTo(Carrier::class, 'carrier_id');
-    }
-
     public function driver()
     {
         return $this->belongsTo(User::class, 'driver_id');

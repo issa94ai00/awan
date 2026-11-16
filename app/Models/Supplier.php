@@ -3,11 +3,22 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Models\Concerns\GuardsDeletionWithHistory;
 use Illuminate\Database\Eloquent\Model;
 
 class Supplier extends Model
 {
-    use HasFactory;
+    use HasFactory, GuardsDeletionWithHistory;
+
+    protected static function deletionBlockers(): array
+    {
+        return [
+        'purchase_orders' => ['supplier_id', 'أوامر شراء'],
+        'purchase_receipts' => ['supplier_id', 'إيصالات استلام'],
+        'supplier_payments' => ['supplier_id', 'دفعات موردين'],
+        'purchase_returns' => ['supplier_id', 'مرتجعات شراء'],
+        ];
+    }
 
     protected $fillable = [
         'name',
