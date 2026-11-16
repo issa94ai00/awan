@@ -31,6 +31,9 @@ class DbIntegrityCheck extends Command
     {
         $failed = [];
 
+        // Stamped so the scheduled log (storage/logs/integrity.log) shows when each run happened.
+        $this->line('== '.now()->toDateTimeString().' '.config('app.timezone'));
+
         foreach (self::CHECKS as $key => [$command, $args, $label]) {
             $ok = Artisan::call($command, $args) === self::SUCCESS;
             $this->line(($ok ? '✔ ' : '✘ ').$label);
