@@ -248,11 +248,10 @@ class InvoiceController extends Controller
     {
         $customer = $invoice->customer_id ? Customer::find($invoice->customer_id) : null;
 
-        if (!$customer) {
-            return ['payment' => null, 'customer_balance' => null];
-        }
-
-        if (!$invoice->sales_order_id) {
+        // A walk-in sale has no account to charge, but the cash it took is
+        // still real: without a payment the ledger kept the sale in
+        // receivables and never recorded the cash.
+        if ($customer && !$invoice->sales_order_id) {
             $customer->updateBalance((float) $invoice->total);
         }
 
@@ -262,7 +261,7 @@ class InvoiceController extends Controller
             $payment = Payment::create([
                 'payment_number' => DocumentNumbers::format('payment', Payment::max('id') + 1),
                 'invoice_id' => $invoice->id,
-                'customer_id' => $customer->id,
+                'customer_id' => $customer?->id,
                 // The invoice's payment method describes how this money arrived;
                 // `transfer` is what the invoice calls a bank transfer.
                 'payment_method' => match ($method) {
@@ -279,12 +278,12 @@ class InvoiceController extends Controller
                 'created_by' => auth()->id(),
             ]);
 
-            $customer->updateBalance(-$paidAmount);
+            $customer?->updateBalance(-$paidAmount);
         }
 
         return [
             'payment' => $payment,
-            'customer_balance' => round((float) $customer->fresh()->balance, 5),
+            'customer_balance' => $customer ? round((float) $customer->fresh()->balance, 5) : null,
         ];
     }
 

@@ -3,13 +3,14 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Models\Concerns\HasUniqueBarcode;
 use Illuminate\Database\Eloquent\Model;
 use Spatie\Sitemap\Contracts\Sitemapable;
 use Spatie\Sitemap\Tags\Url;
 
 class Product extends Model implements Sitemapable
 {
-    use HasFactory;
+    use HasFactory, HasUniqueBarcode;
 
     /**
      * `name`, `description` and `status` are deliberately absent.

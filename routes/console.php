@@ -57,6 +57,11 @@ Schedule::command('commissions:purge-trashed')
     ->dailyAt('02:15')
     ->withoutOverlapping();
 
+// Ledger, stock and customer-balance integrity; alerts admins on drift.
+Schedule::command('db:integrity-check --notify')
+    ->dailyAt('03:00')
+    ->withoutOverlapping();
+
 // Operational ERP metrics alert scan (stock shortages, pending orders, overdue invoices)
 Schedule::command('alerts:check --notify')
     ->hourly()

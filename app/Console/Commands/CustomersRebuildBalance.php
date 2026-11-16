@@ -62,7 +62,7 @@ class CustomersRebuildBalance extends Command
             ->whereNotNull('customer_id')
             ->groupBy('customer_id')
             ->selectRaw("customer_id, COALESCE(SUM(CASE WHEN status = 'cancelled' THEN -paid_amount
-                ELSE due_amount - GREATEST(paid_amount - total, 0) END), 0) AS due")
+                ELSE due_amount - CASE WHEN paid_amount > total THEN paid_amount - total ELSE 0 END END), 0) AS due")
             ->pluck('due', 'customer_id');
 
         $storeCreditByCustomer = DB::table('credit_notes')
@@ -130,7 +130,8 @@ class CustomersRebuildBalance extends Command
         if ($dryRun) {
             $this->warn('معاينة فقط — لم يُعدَّل أي رصيد. أعد التشغيل بلا ‎--dry-run‎ للإصلاح.');
 
-            return self::SUCCESS;
+            // Drift found: fail, like accounting:check and inventory:check.
+            return self::FAILURE;
         }
 
         $this->info("أُعيد بناء {$repaired} رصيد عميل من مستنداته.");

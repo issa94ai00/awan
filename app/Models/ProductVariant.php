@@ -3,13 +3,14 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Models\Concerns\HasUniqueBarcode;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class ProductVariant extends Model
 {
-    use HasFactory;
+    use HasFactory, HasUniqueBarcode;
 
     protected $fillable = [
         'product_id',
