@@ -11,6 +11,7 @@ use App\Models\Invoice;
 use App\Models\Product;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class PosController extends Controller
 {
@@ -82,11 +83,69 @@ class PosController extends Controller
 
         $products = $products->limit(50)->get();
 
+        $data = ProductResource::collection($products);
+
+        // Order forms ask where each result can ship from. Opt-in, so the till
+        // and other callers keep their payload (and query count) unchanged.
+        if ($request->boolean('with_warehouses') && $products->isNotEmpty()) {
+            $rows = $data->resolve($request);
+            $stock = $this->warehouseStockFor($products->pluck('id')->unique()->all());
+
+            foreach ($rows as &$row) {
+                $byVariant = $stock[$row['id']] ?? [];
+                // Variant stock is kept per variant only where the warehouse
+                // tracks it; otherwise the product-level rows are the truth.
+                $row['warehouse_stock'] = array_values(
+                    ($row['variant_id'] ?? null) && isset($byVariant[$row['variant_id']])
+                        ? $byVariant[$row['variant_id']]
+                        : ($byVariant[0] ?? [])
+                );
+            }
+            unset($row);
+            $data = $rows;
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'POS product lookup completed successfully',
-            'data' => ProductResource::collection($products),
+            'data' => $data,
         ]);
+    }
+
+    /**
+     * Sellable quantity per active warehouse, for a set of products.
+     *
+     * Sellable = available bucket minus what confirmed orders hold — the same
+     * figure InventoryService checks before it lets stock leave. Bins of one
+     * warehouse are summed. Shape: [product_id][variant_id|0] => list of
+     * {warehouse_id, name, available}, largest first; empty warehouses omitted.
+     *
+     * @param  array<int,int>  $productIds
+     * @return array<int,array<int,array<int,array{warehouse_id:int,name:string,available:int}>>>
+     */
+    private function warehouseStockFor(array $productIds): array
+    {
+        $rows = DB::table('warehouse_inventory as wi')
+            ->join('warehouses as w', 'w.id', '=', 'wi.warehouse_id')
+            ->whereIn('wi.product_id', $productIds)
+            ->where('w.is_active', 1)
+            ->groupBy('wi.product_id', 'wi.product_variant_id', 'wi.warehouse_id', 'w.name')
+            ->selectRaw('wi.product_id, wi.product_variant_id, wi.warehouse_id, w.name,
+                SUM(wi.available_quantity - wi.reserved_quantity) as available')
+            ->havingRaw('SUM(wi.available_quantity - wi.reserved_quantity) > 0')
+            ->orderByDesc('available')
+            ->get();
+
+        $out = [];
+        foreach ($rows as $r) {
+            $out[(int) $r->product_id][(int) ($r->product_variant_id ?? 0)][] = [
+                'warehouse_id' => (int) $r->warehouse_id,
+                'name' => $r->name,
+                'available' => (int) $r->available,
+            ];
+        }
+
+        return $out;
     }
 
     /**

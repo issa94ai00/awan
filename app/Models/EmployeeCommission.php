@@ -17,6 +17,8 @@ class EmployeeCommission extends Model
         'employee_id',
         'month',
         'commission_rate',
+        'gross_sales',
+        'total_returns',
         'total_sales',
         'extra_expenses',
         'withdrawals',
@@ -29,6 +31,8 @@ class EmployeeCommission extends Model
     protected $casts = [
         'month' => 'date',
         'commission_rate' => 'decimal:2',
+        'gross_sales' => 'decimal:5',
+        'total_returns' => 'decimal:5',
         'total_sales' => 'decimal:5',
         'extra_expenses' => 'decimal:5',
         'withdrawals' => 'decimal:5',
@@ -107,9 +111,105 @@ class EmployeeCommission extends Model
     }
 
     /**
-     * Sums the recognised revenue of every invoice credited to this employee
-     * within the given month. Mirrors Invoice::getRecognizedRevenue() as a
-     * query so it can be aggregated in SQL instead of hydrating every row.
+     * Sums the total returns attributed to this employee within the given month.
+     * Includes credit notes from RMA returns or manual adjustments, as well as
+     * any completed returns without separate credit notes.
+     *
+     * @return array{total_returns: float, return_count: int, returns: list<array<string, mixed>>}
+     */
+    public static function computeReturnsForMonth(int $employeeId, \DateTimeInterface $month): array
+    {
+        $start = \Illuminate\Support\Carbon::parse($month)->startOfMonth();
+        $end = (clone $start)->endOfMonth();
+
+        $creditNotesQuery = CreditNote::query()
+            ->with(['customer:id,name', 'invoice:id,invoice_number'])
+            ->where('status', '!=', CreditNote::STATUS_CANCELLED)
+            ->where(function ($dateQ) use ($start, $end) {
+                $dateQ->whereBetween('issue_date', [$start, $end])
+                    ->orWhere(function ($fallbackQ) use ($start, $end) {
+                        $fallbackQ->whereNull('issue_date')
+                            ->whereBetween('created_at', [$start, $end]);
+                    });
+            })
+            ->where(function ($q) use ($employeeId) {
+                $q->whereHas('invoice', function ($iq) use ($employeeId) {
+                    $iq->where('assigned_employee_id', $employeeId);
+                })->orWhere(function ($noInvoice) use ($employeeId) {
+                    $noInvoice->whereNull('invoice_id')
+                        ->where(function ($rmaOrCustomer) use ($employeeId) {
+                            $rmaOrCustomer->whereHas('rmaRequest', function ($rq) use ($employeeId) {
+                                $rq->whereHas('invoice', fn ($iq) => $iq->where('assigned_employee_id', $employeeId))
+                                    ->orWhereHas('salesOrder', fn ($sq) => $sq->where('assigned_employee_id', $employeeId));
+                            })->orWhere(function ($directCustomer) use ($employeeId) {
+                                $directCustomer->whereNull('rma_request_id')
+                                    ->whereHas('customer', fn ($cq) => $cq->where('employee_id', $employeeId));
+                            });
+                        });
+                });
+            });
+
+        $creditNotes = $creditNotesQuery->get();
+        $creditNotesTotal = (float) $creditNotes->sum('total');
+
+        $returnsList = $creditNotes->map(fn (CreditNote $cn) => [
+            'id' => $cn->id,
+            'type' => 'credit_note',
+            'number' => $cn->credit_note_number,
+            'date' => $cn->issue_date?->toDateString() ?: $cn->created_at?->toDateString(),
+            'amount' => (float) $cn->total,
+            'reason' => $cn->reason ?: 'مرتجع',
+            'customer_name' => $cn->customer?->name,
+            'invoice_number' => $cn->invoice?->invoice_number,
+        ])->all();
+
+        // Check for completed RMA returns that do not have a credit note
+        $orphanRmaQuery = RmaRequest::query()
+            ->with(['customer:id,name', 'invoice:id,invoice_number'])
+            ->where('status', RmaRequest::STATUS_COMPLETED)
+            ->whereDoesntHave('creditNotes')
+            ->where(function ($dateQ) use ($start, $end) {
+                $dateQ->whereBetween('completed_at', [$start, $end])
+                    ->orWhere(function ($fb) use ($start, $end) {
+                        $fb->whereNull('completed_at')->whereBetween('created_at', [$start, $end]);
+                    });
+            })
+            ->where(function ($q) use ($employeeId) {
+                $q->whereHas('invoice', fn ($iq) => $iq->where('assigned_employee_id', $employeeId))
+                    ->orWhereHas('salesOrder', fn ($sq) => $sq->where('assigned_employee_id', $employeeId))
+                    ->orWhere(function ($cq) use ($employeeId) {
+                        $cq->whereNull('invoice_id')
+                            ->whereNull('sales_order_id')
+                            ->whereHas('customer', fn ($custQ) => $custQ->where('employee_id', $employeeId));
+                    });
+            });
+
+        $orphanRmas = $orphanRmaQuery->get();
+        $orphanRmaTotal = (float) $orphanRmas->sum('refund_amount');
+
+        foreach ($orphanRmas as $rma) {
+            $returnsList[] = [
+                'id' => $rma->id,
+                'type' => 'rma',
+                'number' => $rma->rma_number,
+                'date' => $rma->completed_at?->toDateString() ?: $rma->requested_at?->toDateString(),
+                'amount' => (float) $rma->refund_amount,
+                'reason' => $rma->reason_description ?: 'مرتجع RMA',
+                'customer_name' => $rma->customer?->name,
+                'invoice_number' => $rma->invoice?->invoice_number,
+            ];
+        }
+
+        return [
+            'total_returns' => round($creditNotesTotal + $orphanRmaTotal, 2),
+            'return_count' => count($returnsList),
+            'returns' => $returnsList,
+        ];
+    }
+
+    /**
+     * Sums the recognised revenue and returns credited to this employee
+     * within the given month, computing net sales.
      */
     public static function computeSalesForMonth(int $employeeId, \DateTimeInterface $month): array
     {
@@ -120,9 +220,21 @@ class EmployeeCommission extends Model
             ->whereBetween('created_at', [$start, $end])
             ->whereIn('status', self::revenueRecognizedStatuses());
 
+        $grossSales = (float) $query->sum('total');
+        $invoiceCount = (int) $query->count();
+
+        $returnsData = self::computeReturnsForMonth($employeeId, $month);
+        $totalReturns = $returnsData['total_returns'];
+        $netSales = round(max(0, $grossSales - $totalReturns), 2);
+
         return [
-            'total_sales' => (float) $query->sum('total'),
-            'invoice_count' => (int) $query->count(),
+            'gross_sales' => $grossSales,
+            'total_returns' => $totalReturns,
+            'net_sales' => $netSales,
+            'total_sales' => $netSales,
+            'invoice_count' => $invoiceCount,
+            'return_count' => $returnsData['return_count'],
+            'returns' => $returnsData['returns'],
         ];
     }
 
@@ -164,7 +276,14 @@ class EmployeeCommission extends Model
 
     public function toStatement(): array
     {
+        $grossSales = (float) ($this->gross_sales ?: $this->total_sales);
+        $totalReturns = (float) ($this->total_returns ?? 0);
+        $netSales = round(max(0, (float) $this->total_sales), 2);
+
         return array_merge($this->toArray(), [
+            'gross_sales' => $grossSales,
+            'total_returns' => $totalReturns,
+            'net_sales' => $netSales,
             'commission_amount' => $this->commissionAmount(),
             'net_due' => $this->netDue(),
             'balance' => $this->balance(),

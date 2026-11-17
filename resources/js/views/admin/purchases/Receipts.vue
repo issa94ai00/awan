@@ -13,6 +13,9 @@
                     clearable 
                     class="search-input"
                     :prefix-icon="Search"
+                    @input="onSearchInput"
+                    @keyup.enter="loadReceipts(1)"
+                    @clear="loadReceipts(1)"
                 />
                 <el-button type="primary" @click="openCreateDrawer" class="create-btn">
                     <i class="fas fa-plus-circle"></i> {{ $t('new_receipt') }}
@@ -28,7 +31,7 @@
                         <i class="fas fa-receipt"></i>
                     </div>
                     <div class="stat-details">
-                        <h3>{{ store.receipts.length }}</h3>
+                        <h3>{{ store.pagination.total }}</h3>
                         <p>{{ $t('total_receipts') }}</p>
                     </div>
                 </div>
@@ -169,6 +172,18 @@
                     <el-button type="primary" size="medium" @click="openCreateDrawer">
                         <i class="fas fa-plus-circle"></i> {{ $t('create_new_receipt') }}
                     </el-button>
+                </div>
+
+                <!-- Server-side Pagination -->
+                <div v-if="store.pagination.total > store.pagination.per_page" class="pagination-row">
+                    <el-pagination
+                        layout="prev, pager, next, total"
+                        :total="store.pagination.total"
+                        :current-page="store.pagination.current_page"
+                        :page-size="store.pagination.per_page"
+                        background
+                        @current-change="onPageChange"
+                    />
                 </div>
             </div>
         </el-card>
@@ -505,20 +520,23 @@ const receiptLines = (receipt) => (receipt.items || []).map((item) => ({
     total: num(item.total) || num(item.unit_price) * num(item.quantity),
 }));
 
-const filteredReceipts = computed(() => {
-    if (!searchQuery.value.trim()) return store.receipts;
-    return store.receipts.filter((receipt) => {
-        return matchesSearch([
-            receipt.receipt_number,
-            receipt.supplier?.name,
-            receipt.purchase_order?.order_number,
-            receipt.receipt_date,
-            receipt.notes
-        ], searchQuery.value);
-    });
-});
+const loadReceipts = (page = 1) => {
+    const params = { page, per_page: store.pagination.per_page || 20 };
+    if (searchQuery.value.trim()) params.search = searchQuery.value.trim();
+    return store.fetchReceipts(params).catch(() => {});
+};
 
-const recentCount = computed(() => Math.min(store.receipts.length, 5));
+const onPageChange = (page) => loadReceipts(page);
+
+let searchTimer = null;
+const onSearchInput = () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => loadReceipts(1), 400);
+};
+
+const filteredReceipts = computed(() => store.receipts);
+
+const recentCount = computed(() => Math.min(store.pagination.total || store.receipts.length, 5));
 
 // Drawer Actions
 // The goods received note for one receipt.
@@ -546,7 +564,7 @@ const openCreateDrawer = () => receiptFormRef.value?.openCreate();
 const openEditDrawer = (id) => receiptFormRef.value?.openEdit(id);
 
 const onReceiptSaved = async ({ id, edited }) => {
-    await store.fetchReceipts();
+    await loadReceipts(edited ? store.pagination.current_page : 1);
     if (edited && detailDrawerVisible.value && selectedReceipt.value?.id === id) openDetailDrawer(id);
 };
 
@@ -592,7 +610,7 @@ const submitPayment = async () => {
         });
         payDialog.visible = false;
         ElMessage.success(t('rc_payment_recorded'));
-        await store.fetchReceipts();
+        await loadReceipts(store.pagination.current_page);
         if (detailDrawerVisible.value && selectedReceipt.value?.id === receipt.id) {
             await openDetailDrawer(receipt.id);
         }
@@ -618,7 +636,8 @@ const deleteReceipt = async (id) => {
     try {
         await purchaseReceiptsApi.delete(id);
         ElMessage.success(t('receipt_deleted'));
-        await store.fetchReceipts();
+        const { current_page: page } = store.pagination;
+        await loadReceipts(store.receipts.length === 1 && page > 1 ? page - 1 : page);
     } catch (error) {
         ElMessage.error(error.response?.data?.message || t('failed_to_delete_receipt'));
     }
@@ -632,7 +651,7 @@ onMounted(() => {
     window.addEventListener('resize', onResize);
     // A purchase order's detail links here with ?search=<receipt number>.
     if (route.query.search) searchQuery.value = String(route.query.search);
-    store.fetchReceipts().catch(() => {});
+    loadReceipts(1);
     suppliersStore.fetchSuppliers().catch(() => {});
     inventoryStore.fetchSummary().catch(() => {});
 
@@ -1021,5 +1040,10 @@ onMounted(() => {
     color: #cbd5e1;
 }
 
+.pagination-row {
+    display: flex;
+    justify-content: center;
+    margin-top: 1.5rem;
+}
 
 </style>

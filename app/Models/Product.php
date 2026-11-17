@@ -310,7 +310,27 @@ class Product extends Model implements Sitemapable
                 'pv.color as variant_color',
                 'pv.size as variant_size',
                 'pv.material as variant_material',
+                'pv.specs as variant_specs',
             ]);
+    }
+
+    /**
+     * Populate the aliased variant fields onto this product instance from a given ProductVariant.
+     */
+    public function setVariantRow(ProductVariant $variant): self
+    {
+        $this->variant_id = $variant->id;
+        $this->variant_sku = $variant->sku;
+        $this->variant_barcode = $variant->barcode;
+        $this->variant_price = $variant->price;
+        $this->variant_cost_price = $variant->cost_price;
+        $this->variant_stock_quantity = $variant->stock_quantity;
+        $this->variant_color = $variant->color;
+        $this->variant_size = $variant->size;
+        $this->variant_material = $variant->material;
+        $this->variant_specs = is_array($variant->specs) ? json_encode($variant->specs) : $variant->specs;
+
+        return $this;
     }
 
     /**

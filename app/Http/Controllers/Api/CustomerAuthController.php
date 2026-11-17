@@ -19,6 +19,8 @@ class CustomerAuthController extends Controller
             'email' => 'nullable|email|max:255|unique:customers,email',
             'password' => 'required|string|min:6',
             'employee_id' => 'nullable|exists:employees,id',
+            'company' => 'nullable|string|max:255',
+            'address' => 'nullable|string|max:1000',
         ], [
             'name.required' => 'الاسم مطلوب',
             'phone.required' => 'رقم الهاتف مطلوب',
@@ -39,6 +41,8 @@ class CustomerAuthController extends Controller
             'auth_token' => $token,
             'source' => 'customer_register',
             'status' => 'active',
+            'company' => $request->company,
+            'address' => $request->address,
             'employee_id' => $validated['employee_id'] ?? null,
         ]);
 
@@ -51,6 +55,8 @@ class CustomerAuthController extends Controller
                     'name' => $customer->name,
                     'phone' => $customer->phone,
                     'email' => $customer->email,
+                    'company' => $customer->company,
+                    'address' => $customer->address,
                     'employee_id' => $customer->employee_id,
                 ],
                 'token' => $token,
@@ -95,6 +101,8 @@ class CustomerAuthController extends Controller
                     'name' => $customer->name,
                     'phone' => $customer->phone,
                     'email' => $customer->email,
+                    'company' => $customer->company,
+                    'address' => $customer->address,
                     'employee_id' => $customer->employee_id,
                 ],
                 'token' => $customer->auth_token,

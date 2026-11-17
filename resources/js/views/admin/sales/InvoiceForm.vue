@@ -1,7 +1,16 @@
 <template>
-    <div class="pf-page invoice-form-page">
+    <el-drawer
+        v-model="visible"
+        :size="drawerSize"
+        :direction="drawerDirection"
+        :destroy-on-close="false"
+        class="pf-drawer invoice-drawer"
+        :before-close="confirmClose"
+        @opened="onOpened"
+        @closed="onClosed"
+    >
         <!-- Header: what this is, and the way out -->
-        <header class="pf-page-head">
+        <template #header>
             <div class="pf-title">
                 <span class="pf-title-icon is-sale"><i class="fas fa-file-invoice-dollar"></i></span>
                 <div>
@@ -23,11 +32,8 @@
                 <el-button v-if="!isEdit && items.length" text type="danger" @click="confirmClearInvoice">
                     <i class="fas fa-trash-can"></i>&nbsp;{{ t('sinv_clear') }}
                 </el-button>
-                <el-button @click="goBack">
-                    <i class="fas" :class="backArrow"></i>&nbsp;{{ t('back_to_invoices') || 'العودة للفواتير' }}
-                </el-button>
             </div>
-        </header>
+        </template>
 
         <section v-if="loading" class="pf-card pf-skeleton">
             <el-skeleton :rows="8" animated />
@@ -786,7 +792,7 @@
         </div>
 
         <!-- Footer: the money at a glance and the ways to save -->
-        <footer v-if="!loading" class="pf-page-footer">
+        <template #footer>
             <div class="pf-footer">
                 <div class="pf-footer-sum">
                     <div class="pf-footer-metric is-main" :class="{ 'is-invalid': !!discountError }">
@@ -812,7 +818,7 @@
                         <i class="fas fa-circle-exclamation"></i> {{ blockerText }}
                     </span>
                     <span v-else class="pf-kbd-hint"><kbd>F9</kbd> · <kbd>Ctrl</kbd> + <kbd>Enter</kbd> · <kbd>F2</kbd> {{ t('search') }} · <kbd>F4</kbd> {{ t('pqa_button') }}</span>
-                    <el-button @click="goBack">{{ t('cancel') }}</el-button>
+                    <el-button @click="closeForm">{{ t('cancel') }}</el-button>
                     <template v-if="!isEdit">
                         <el-button :loading="submitting" :disabled="!canSubmit" @click="submitInvoice('new')">
                             <i class="fas fa-plus"></i>&nbsp;{{ t('sinv_save_and_new') }}
@@ -826,38 +832,38 @@
                     </el-button>
                 </div>
             </div>
-        </footer>
+        </template>
+    </el-drawer>
 
-        <ProductQuickAdd
-            v-model="quickProductVisible"
-            :seed="quickProductSeed"
-            :categories="categoryOptions"
-            :default-category-id="selectedCategoryId"
-            @created="onQuickProductCreated"
-            @use-existing="(row, qty) => addProductDirect(row, qty)"
-        />
+    <ProductQuickAdd
+        v-model="quickProductVisible"
+        :seed="quickProductSeed"
+        :categories="categoryOptions"
+        :default-category-id="selectedCategoryId"
+        @created="onQuickProductCreated"
+        @use-existing="(row, qty) => addProductDirect(row, qty)"
+    />
 
-        <el-dialog
-            v-model="shortcutsModalVisible"
-            :title="t('keyboard_shortcuts') || 'اختصارات لوحة المفاتيح'"
-            width="460px"
-            destroy-on-close
-            append-to-body
-        >
-            <div class="sf-shortcuts">
-                <div><span>{{ t('sinv_sc_search') }}</span><kbd>F2</kbd></div>
-                <div><span>{{ t('sinv_sc_new_product') }}</span><kbd>F4</kbd></div>
-                <div>
-                    <span>{{ t('sinv_sc_save') }}</span>
-                    <span><kbd>Ctrl</kbd> + <kbd>Enter</kbd> {{ t('sinv_sc_or') }} <kbd>F9</kbd></span>
-                </div>
-                <div><span>{{ t('sinv_sc_close') }}</span><kbd>Esc</kbd></div>
+    <el-dialog
+        v-model="shortcutsModalVisible"
+        :title="t('keyboard_shortcuts') || 'اختصارات لوحة المفاتيح'"
+        width="460px"
+        destroy-on-close
+        append-to-body
+    >
+        <div class="sf-shortcuts">
+            <div><span>{{ t('sinv_sc_search') }}</span><kbd>F2</kbd></div>
+            <div><span>{{ t('sinv_sc_new_product') }}</span><kbd>F4</kbd></div>
+            <div>
+                <span>{{ t('sinv_sc_save') }}</span>
+                <span><kbd>Ctrl</kbd> + <kbd>Enter</kbd> {{ t('sinv_sc_or') }} <kbd>F9</kbd></span>
             </div>
-            <template #footer>
-                <el-button type="primary" @click="shortcutsModalVisible = false">{{ t('close') || 'إغلاق' }}</el-button>
-            </template>
-        </el-dialog>
-    </div>
+            <div><span>{{ t('sinv_sc_close') }}</span><kbd>Esc</kbd></div>
+        </div>
+        <template #footer>
+            <el-button type="primary" @click="shortcutsModalVisible = false">{{ t('close') || 'إغلاق' }}</el-button>
+        </template>
+    </el-dialog>
 </template>
 
 <script setup>
@@ -922,6 +928,49 @@ let draftTracking = false;
 const draftSavedAt = ref('');
 
 const shortcutsModalVisible = ref(false);
+
+/* Drawer ----------------------------------------------------------- */
+const visible = ref(true);
+const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1200);
+const onResize = () => { viewportWidth.value = window.innerWidth; };
+const drawerSize = computed(() => (viewportWidth.value < 1100 ? '100%' : '94%'));
+const drawerDirection = computed(() => (locale.value === 'ar' || (typeof document !== 'undefined' && document.documentElement.dir === 'rtl') ? 'rtl' : 'ltr'));
+
+const confirmClose = async (done) => {
+    if (!isEdit.value && dirty.value && items.value.length) {
+        try {
+            await ElMessageBox.confirm(
+                t('sinv_confirm_leave') || 'هل تريد مغادرة الفاتورة؟ سيتم حفظ المسودة محلياً.',
+                t('confirm') || 'تأكيد',
+                {
+                    confirmButtonText: t('yes') || 'نعم',
+                    cancelButtonText: t('cancel') || 'إلغاء',
+                    type: 'warning',
+                }
+            );
+            saveDraft();
+            done();
+        } catch {
+            return;
+        }
+    } else {
+        done();
+    }
+};
+
+const closeForm = () => {
+    confirmClose(() => {
+        visible.value = false;
+    });
+};
+
+const onClosed = () => {
+    goBack();
+};
+
+const onOpened = () => {
+    focusCatalog();
+};
 
 /* ------------------------------------------------------------------ *
  * Workspace: the invoice beside the product catalogue (the purchase
@@ -2286,6 +2335,8 @@ const submitInvoice = async (afterAction = 'close') => {
         if (isEdit.value) {
             await invoicesStore.updateInvoice(invoiceId, payload);
             ElMessage.success(t('invoice_updated_successfully') || 'تم تحديث الفاتورة بنجاح');
+            dirty.value = false;
+            visible.value = false;
             router.push('/admin/sales/invoices');
         } else {
             const created = await invoicesStore.createInvoice(payload);
@@ -2299,11 +2350,13 @@ const submitInvoice = async (afterAction = 'close') => {
 
             if (afterAction === 'print') {
                 // Navigate to invoice list with print preview trigger
+                visible.value = false;
                 router.push({ path: '/admin/sales/invoices', query: { print: created.id } });
             } else if (afterAction === 'new') {
                 resetFormToNew();
                 ElMessage.info(t('sinv_ready_next'));
             } else {
+                visible.value = false;
                 router.push('/admin/sales/invoices');
             }
         }
@@ -2325,10 +2378,10 @@ const submitInvoice = async (afterAction = 'close') => {
             }
 
             formErrors.value = list;
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            formRoot.value?.scrollTo?.({ top: 0, behavior: 'smooth' });
         } else {
             formErrors.value = [err.response?.data?.message || t('sinv_save_failed')];
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            formRoot.value?.scrollTo?.({ top: 0, behavior: 'smooth' });
         }
     } finally {
         submitting.value = false;
@@ -2356,18 +2409,7 @@ const confirmClearInvoice = async () => {
     }
 };
 
-const goBack = async () => {
-    if (dirty.value && items.value.length) {
-        try {
-            await ElMessageBox.confirm(
-                t('sinv_confirm_leave'),
-                t('confirm') || 'تأكيد',
-                { type: 'warning' }
-            );
-        } catch {
-            return;
-        }
-    }
+const goBack = () => {
     router.push('/admin/sales/invoices');
 };
 
@@ -2391,6 +2433,7 @@ const handleGlobalKeydown = (e) => {
 };
 
 onMounted(async () => {
+    window.addEventListener('resize', onResize);
     window.addEventListener('keydown', handleGlobalKeydown);
 
     await Promise.allSettled([
@@ -2428,6 +2471,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+    window.removeEventListener('resize', onResize);
     window.removeEventListener('keydown', handleGlobalKeydown);
     clearTimeout(quickSearchTimer);
     clearTimeout(draftTimer);

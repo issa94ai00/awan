@@ -95,7 +95,9 @@ class EmployeeCommissionController extends Controller
             ['employee_id' => $validated['employee_id'], 'month' => $month->toDateString()],
             [
                 'commission_rate' => $validated['commission_rate'],
-                'total_sales' => $sales['total_sales'],
+                'gross_sales' => $sales['gross_sales'],
+                'total_returns' => $sales['total_returns'],
+                'total_sales' => $sales['net_sales'],
                 'extra_expenses' => $validated['extra_expenses'] ?? 0,
                 'monthly_target' => $validated['monthly_target'] ?? null,
                 'notes' => $validated['notes'] ?? null,
@@ -125,7 +127,9 @@ class EmployeeCommissionController extends Controller
                 $employeeCommission->employee_id,
                 $employeeCommission->month
             );
-            $employeeCommission->total_sales = $sales['total_sales'];
+            $employeeCommission->gross_sales = $sales['gross_sales'];
+            $employeeCommission->total_returns = $sales['total_returns'];
+            $employeeCommission->total_sales = $sales['net_sales'];
         }
 
         // `withdrawals` is deliberately left out — see store().

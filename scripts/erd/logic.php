@@ -124,7 +124,9 @@ $add('fifo_variant_mixing_history', 'costing', 'info', 'بنود قديمة حُ
 $items = [];
 $safe(function () use (&$items, $q, $f) {
     foreach ($q("SELECT l.product_id, p.name_ar, COUNT(*) n, SUM(l.remaining_quantity) rem FROM inventory_cost_layers l JOIN products p ON p.id = l.product_id
-        WHERE l.product_variant_id IS NULL AND l.remaining_quantity > 0 AND EXISTS (SELECT 1 FROM product_variants v WHERE v.product_id = l.product_id)
+        WHERE l.product_variant_id IS NULL AND l.remaining_quantity > 0
+        -- only products whose variants actually differ in cost: if they all cost the same, a shared layer costs every variant correctly
+        AND (SELECT MAX(v.cost_price) - MIN(v.cost_price) FROM product_variants v WHERE v.product_id = l.product_id AND v.cost_price > 0) > 0.01 * (SELECT MIN(v.cost_price) FROM product_variants v WHERE v.product_id = l.product_id AND v.cost_price > 0)
         GROUP BY l.product_id, p.name_ar ORDER BY rem DESC") as $x)
         $items[] = ['table' => 'inventory_cost_layers', 'column' => 'product_variant_id', 'detail' => "منتج #{$x['product_id']} {$x['name_ar']}: {$x['n']} طبقة مشتركة ({$f($x['rem'])} وحدة) بلا متغير"];
 });
@@ -171,6 +173,33 @@ $safe(function () use (&$items, $q, $f) {
 });
 $add('fifo_layers', 'costing', 'warning', 'طبقات كلفة FIFO لا تطابق الرصيد',
     'كلفة كل صرف تُسحب من طبقات الكلفة؛ إن كانت الطبقات أقل من الرصيد تُصرف وحدات بكلفة 0 أو بكلفة احتياطية، وإن كانت أكثر تُحمَّل المبيعات كلفة بضاعة غير موجودة.', 'إنشاء طبقة افتتاحية بالفرق بكلفة المنتج، أو استهلاك الطبقات الزائدة، عبر تسوية مخزون.', $items);
+
+// Open layers valued at 0: whatever is sold from them carries no cost of goods (inflated profit).
+$items = [];
+$safe(function () use (&$items, $q, $f) {
+    foreach ($q("SELECT COALESCE(l.source,'—') src, l.warehouse_id, COUNT(*) n, SUM(l.remaining_quantity) units,
+            SUM(l.remaining_quantity * COALESCE(NULLIF(v.cost_price,0), p.cost_price, 0)) worth
+        FROM inventory_cost_layers l JOIN products p ON p.id = l.product_id LEFT JOIN product_variants v ON v.id = l.product_variant_id
+        WHERE l.remaining_quantity > 0 AND l.unit_cost = 0 GROUP BY src, l.warehouse_id ORDER BY worth DESC") as $x)
+        $items[] = ['table' => 'inventory_cost_layers', 'column' => 'unit_cost', 'detail' => "مستودع #{$x['warehouse_id']} — مصدر {$x['src']}: {$x['n']} طبقة، {$f($x['units'])} وحدة بكلفة 0 (قيمتها بكلفة الصنف ≈ {$f($x['worth'])})"];
+});
+$add('zero_cost_layers', 'costing', 'warning', 'طبقات كلفة مفتوحة بكلفة صفر',
+    'ما يُباع منها يُسجَّل بلا كلفة بضاعة مباعة فيظهر ربحاً كاملاً، والمخزون مقوَّم بأقل من قيمته. مصدرها الأساسي تحويلات قديمة فتحت طبقة الوجهة بكلفة 0 (خلل أُصلح لاحقاً).',
+    'إعادة تقويم الطبقة بكلفة الحركة الصادرة المقابلة لها مع قيد تسوية — يحتاج اعتماداً محاسبياً.', $items);
+
+// The ledger's inventory account per warehouse must equal what the cost layers say is there.
+$items = [];
+$safe(function () use (&$items, $q, $f) {
+    foreach ($q("SELECT w.id, w.name, COALESCE(lg.bal,0) ledger, COALESCE(ly.val,0) layers FROM warehouses w
+        LEFT JOIN (SELECT a.warehouse_id, SUM(jl.debit) - SUM(jl.credit) bal FROM journal_entry_lines jl JOIN journal_entry_headers h ON h.id = jl.journal_entry_header_id AND h.deleted_at IS NULL
+            JOIN ledger_accounts a ON a.id = jl.account_id WHERE a.warehouse_id IS NOT NULL AND a.type = 'asset' GROUP BY a.warehouse_id) lg ON lg.warehouse_id = w.id
+        LEFT JOIN (SELECT warehouse_id, SUM(remaining_quantity * unit_cost) val FROM inventory_cost_layers WHERE remaining_quantity > 0 GROUP BY warehouse_id) ly ON ly.warehouse_id = w.id
+        WHERE ABS(COALESCE(lg.bal,0) - COALESCE(ly.val,0)) > 1") as $x)
+        $items[] = ['table' => 'journal_entry_lines', 'detail' => "مستودع #{$x['id']} {$x['name']}: حساب المخزون في الدفاتر {$f($x['ledger'])} وقيمة طبقات الكلفة {$f($x['layers'])} — فرق " . $f($x['ledger'] - $x['layers'])];
+});
+$add('ledger_vs_layers', 'costing', 'critical', 'قيمة المخزون في الدفاتر لا تطابق طبقات الكلفة (لكل مستودع)',
+    'حساب مخزون كل مستودع يجب أن يساوي قيمة طبقات الكلفة فيه. الفرق يأتي من حركات لم تُرحَّل محاسبياً: تحويلات بين المستودعات، رصيد افتتاحي مستورد، ومبيعات صُرفت من طبقات بكلفة 0. فحص النظام الليلي لا يقارن بينهما.',
+    'تسوية محاسبية مُعتمدة: قيد التحويل بين حسابي المستودعين، قيد الرصيد الافتتاحي، وتصحيح كلفة المبيعات.', $items);
 
 /* ===================== STATES & TIMELINE ===================== */
 $items = [];

@@ -40,8 +40,9 @@ function sidebarPaths(): array
 it('gives every sidebar page a permission', function () {
     $map = jsPagePermissions();
     // The landing page stays open to every staff account; Features
-    // Management is master-only rather than permission-based.
-    $open = ['/admin/dashboard', '/admin/features'];
+    // Management is master-only rather than permission-based;
+    // System Documentation is open to all staff accounts.
+    $open = ['/admin/dashboard', '/admin/features', '/admin/docs'];
 
     $missing = collect(sidebarPaths())
         ->reject(fn ($path) => in_array($path, $open, true) || isset($map[$path]))

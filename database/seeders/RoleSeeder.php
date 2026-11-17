@@ -125,6 +125,7 @@ class RoleSeeder extends Seeder
             ['name' => 'marketing.view', 'display_name' => 'عرض التسويق', 'module' => 'marketing'],
             ['name' => 'marketing.campaigns', 'display_name' => 'إدارة الحملات', 'module' => 'marketing'],
             ['name' => 'customers.create', 'display_name' => 'إضافة عميل جديد', 'module' => 'crm'],
+            ['name' => 'quotes.approve', 'display_name' => 'اعتماد عروض الأسعار', 'module' => 'sales'],
         ];
 
         foreach ($permissions as $permission) {
@@ -164,7 +165,7 @@ class RoleSeeder extends Seeder
         $rolePermissions = [
             'master' => $all,
             'admin' => $all,
-            'manager' => ['dashboard.view', 'products.view', 'products.create', 'products.edit', 'sales.view', 'sales.create', 'inventory.view', 'inventory.manage', 'reports.view'],
+            'manager' => ['dashboard.view', 'products.view', 'products.create', 'products.edit', 'sales.view', 'sales.create', 'inventory.view', 'inventory.manage', 'reports.view', 'quotes.approve'],
             'employee' => ['dashboard.view', 'sales.view'],
             'sells' => ['dashboard.view', 'categories.view', 'products.view', 'sales.view', 'sales.create', 'inventory.view', 'customers.create', 'purchases.view', 'purchases.orders.view', 'purchases.create', 'purchases.requests.view'],
             'accountant' => ['dashboard.view', 'sales.view', 'inventory.view', 'purchases.view', 'reports.view', 'settings.view'],

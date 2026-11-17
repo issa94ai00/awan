@@ -5,6 +5,9 @@ namespace App\Providers;
 use App\Models\User;
 use App\Support\SearchTerms;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Mail;
+use Symfony\Component\Mailer\Bridge\Brevo\Transport\BrevoTransportFactory;
+use Symfony\Component\Mailer\Transport\Dsn;
 use Spatie\Permission\PermissionRegistrar;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
@@ -25,6 +28,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Mail::extend('brevo', fn (array $config) => (new BrevoTransportFactory)->create(
+            new Dsn('brevo+api', 'default', $config['key'] ?? null)
+        ));
+
         // ->whereSearch(['name', 'customer.name'], $request->search): every
         // word of the search has to appear somewhere, in any order.
         $whereSearch = function (array $columns, ?string $term) {

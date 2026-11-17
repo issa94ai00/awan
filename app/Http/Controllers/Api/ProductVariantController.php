@@ -29,6 +29,102 @@ class ProductVariantController extends Controller
     }
 
     /**
+     * Ensure this variant's combination of size, color and material is unique within the product,
+     * and barcode is unique when provided.
+     *
+     * @throws ValidationException
+     */
+    private function assertUniqueConstraints(int $productId, ?string $size, ?string $color, ?string $material, ?string $barcode = null, ?int $ignoreVariantId = null): void
+    {
+        $size = trim((string) $size) ?: null;
+        $color = trim((string) $color) ?: null;
+        $material = trim((string) $material) ?: null;
+
+        $query = ProductVariant::where('product_id', $productId);
+        if ($ignoreVariantId) {
+            $query->where('id', '!=', $ignoreVariantId);
+        }
+
+        $size === null ? $query->whereNull('size') : $query->where('size', $size);
+        $color === null ? $query->whereNull('color') : $query->where('color', $color);
+        $material === null ? $query->whereNull('material') : $query->where('material', $material);
+
+        if ($query->exists()) {
+            throw ValidationException::withMessages([
+                'size' => ['يوجد بالفعل متغيّر لهذا المنتج بنفس الخيارات (المقاس، اللون، الخامة).'],
+            ]);
+        }
+
+        $barcode = trim((string) $barcode) ?: null;
+        if ($barcode !== null) {
+            $barcodeConflict = ProductVariant::where('barcode', $barcode)
+                ->when($ignoreVariantId, fn ($q) => $q->where('id', '!=', $ignoreVariantId))
+                ->exists() || \App\Models\Product::where('barcode', $barcode)
+                ->when($productId, fn ($q) => $q->where('id', '!=', $productId))
+                ->exists();
+
+            if ($barcodeConflict) {
+                throw ValidationException::withMessages([
+                    'barcode' => ['الباركود مستخدم بالفعل لصنف أو متغيّر آخر.'],
+                ]);
+            }
+        }
+    }
+
+    /**
+     * Get a specific variant by ID.
+     */
+    public function show(Request $request, $variant): JsonResponse
+    {
+        $variant = ProductVariant::with(['product' => fn ($q) => $q->with('category')])->findOrFail($variant);
+
+        $seesCost = \App\Http\Resources\ProductResource::viewerSeesCost($request);
+
+        $productData = $variant->product ? [
+            'id' => $variant->product->id,
+            'name_ar' => $variant->product->name_ar,
+            'name_en' => $variant->product->name_en,
+            'slug' => $variant->product->slug,
+            'sku' => $variant->product->sku,
+            'barcode' => $variant->product->barcode,
+            'price' => $variant->product->price,
+            'sale_price' => $variant->product->sale_price,
+            'category_id' => $variant->product->category_id,
+            'category' => $variant->product->category ? [
+                'id' => $variant->product->category->id,
+                'name_ar' => $variant->product->category->name_ar,
+                'name_en' => $variant->product->category->name_en,
+                'slug' => $variant->product->category->slug,
+            ] : null,
+        ] : null;
+
+        $data = [
+            'id' => $variant->id,
+            'product_id' => $variant->product_id,
+            'sku' => $variant->sku,
+            'barcode' => $variant->barcode,
+            'size' => $variant->size,
+            'color' => $variant->color,
+            'material' => $variant->material,
+            'price' => $variant->price,
+            'stock_quantity' => $variant->stock_quantity,
+            'specs' => $variant->specs ?? [],
+            'label' => $variant->label,
+            'product' => $productData,
+        ];
+
+        if ($seesCost) {
+            $data['cost_price'] = $variant->cost_price;
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Variant retrieved successfully',
+            'data' => $data,
+        ]);
+    }
+
+    /**
      * Create a new variant under a product.
      */
     public function store(Request $request): JsonResponse
@@ -46,6 +142,14 @@ class ProductVariantController extends Controller
                 'stock_quantity' => 'required|integer|min:0',
                 ...self::specsRules(),
             ]);
+
+            $this->assertUniqueConstraints(
+                (int) $validated['product_id'],
+                $validated['size'] ?? null,
+                $validated['color'] ?? null,
+                $validated['material'] ?? null,
+                $validated['barcode'] ?? null
+            );
 
             if (array_key_exists('specs', $validated)) {
                 $validated['specs'] = ProductVariant::normaliseSpecs($validated['specs']);
@@ -93,6 +197,20 @@ class ProductVariantController extends Controller
                 'stock_quantity' => 'sometimes|required|integer|min:0',
                 ...self::specsRules(),
             ]);
+
+            $size = array_key_exists('size', $validated) ? $validated['size'] : $variant->size;
+            $color = array_key_exists('color', $validated) ? $validated['color'] : $variant->color;
+            $material = array_key_exists('material', $validated) ? $validated['material'] : $variant->material;
+            $barcode = array_key_exists('barcode', $validated) ? $validated['barcode'] : $variant->barcode;
+
+            $this->assertUniqueConstraints(
+                (int) $variant->product_id,
+                $size,
+                $color,
+                $material,
+                $barcode,
+                $variant->id
+            );
 
             if (array_key_exists('specs', $validated)) {
                 $validated['specs'] = ProductVariant::normaliseSpecs($validated['specs']);

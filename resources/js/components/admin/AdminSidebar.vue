@@ -210,7 +210,7 @@ import { pagePermissionFor } from '@/config/pagePermissions';
 import {
     Box, Fold, Expand, Close, Odometer, ShoppingCart, ArrowDown, Setting,
     ShoppingBag, Coin, UserFilled, ChatDotRound, Tools, DataAnalysis, Monitor,
-    ChatLineRound, View, Refresh, Bell, Location, Cpu, Search
+    ChatLineRound, View, Refresh, Bell, Location, Cpu, Search, Reading
 } from '@element-plus/icons-vue';
 
 const { t, locale } = useI18n();
@@ -252,6 +252,7 @@ const menu = [
         labelKey: 'nav_label_main',
         items: [
             { key: 'dashboard', labelKey: 'dashboard', path: '/admin/dashboard', icon: Odometer },
+            { key: 'documentation', labelKey: 'documentation', path: '/admin/docs', icon: Reading },
         ],
     },
     {

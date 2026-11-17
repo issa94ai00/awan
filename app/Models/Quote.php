@@ -14,6 +14,10 @@ class Quote extends Model
         'quote_number',
         'customer_id',
         'status',
+        'approval_status',
+        'approved_by',
+        'approved_at',
+        'approval_note',
         'valid_until',
         'subtotal',
         'tax',
@@ -30,7 +34,15 @@ class Quote extends Model
         'discount' => 'decimal:5',
         'total' => 'decimal:5',
         'valid_until' => 'date',
+        'approved_at' => 'datetime',
     ];
+
+    const APPROVAL_PENDING = 'pending';
+    const APPROVAL_APPROVED = 'approved';
+    const APPROVAL_REJECTED = 'rejected';
+
+    /** Statuses that mean the quote has gone to the customer: approval first. */
+    const NEEDS_APPROVAL = ['sent', 'accepted'];
 
     const STATUS_DRAFT = 'draft';
     const STATUS_SENT = 'sent';
@@ -67,6 +79,16 @@ class Quote extends Model
     public function items()
     {
         return $this->hasMany(QuoteItem::class);
+    }
+
+    public function approver()
+    {
+        return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    public function isApproved(): bool
+    {
+        return $this->approval_status === self::APPROVAL_APPROVED;
     }
 
     public function salesOrder()

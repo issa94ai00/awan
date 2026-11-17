@@ -222,3 +222,110 @@ test('commission record balance goes negative when withdrawals exceed net due', 
         ->assertJsonPath('data.0.balance', -2500)
         ->assertJsonPath('data.0.balance_status', 'debtor');
 });
+
+test('commission calculate-sales deducts returns (credit notes) from gross sales to compute net sales', function () {
+    $month = now()->startOfMonth();
+    $customer = \App\Models\Customer::create(['name' => 'عميل اختبار', 'phone' => '0911111111']);
+
+    $inv1 = makeInvoice($this->employee, 100000, Invoice::STATUS_CONFIRMED, $month->copy()->addDays(2));
+    $inv1->update(['customer_id' => $customer->id]);
+
+    $inv2 = makeInvoice($this->employee, 50000, Invoice::STATUS_DELIVERED, $month->copy()->addDays(5));
+    $inv2->update(['customer_id' => $customer->id]);
+
+    // Active credit note on inv1 within the month
+    \App\Models\CreditNote::create([
+        'credit_note_number' => 'CN-' . uniqid(),
+        'customer_id' => $customer->id,
+        'invoice_id' => $inv1->id,
+        'issue_date' => $month->copy()->addDays(10)->toDateString(),
+        'subtotal' => 25000,
+        'total' => 25000,
+        'status' => \App\Models\CreditNote::STATUS_ISSUED,
+    ]);
+
+    // Cancelled credit note - should NOT be deducted
+    \App\Models\CreditNote::create([
+        'credit_note_number' => 'CN-' . uniqid(),
+        'customer_id' => $customer->id,
+        'invoice_id' => $inv1->id,
+        'issue_date' => $month->copy()->addDays(12)->toDateString(),
+        'subtotal' => 10000,
+        'total' => 10000,
+        'status' => \App\Models\CreditNote::STATUS_CANCELLED,
+    ]);
+
+    // Another employee's invoice and return - should NOT be deducted
+    $otherRep = Employee::create([
+        'name' => 'مندوب آخر',
+        'email' => 'other@example.com',
+        'phone' => '+963900000002',
+        'status' => 'نشط',
+    ]);
+    $otherInv = makeInvoice($otherRep, 80000, Invoice::STATUS_CONFIRMED, $month->copy()->addDays(3));
+    \App\Models\CreditNote::create([
+        'credit_note_number' => 'CN-' . uniqid(),
+        'customer_id' => $customer->id,
+        'invoice_id' => $otherInv->id,
+        'issue_date' => $month->copy()->addDays(15)->toDateString(),
+        'subtotal' => 30000,
+        'total' => 30000,
+        'status' => \App\Models\CreditNote::STATUS_ISSUED,
+    ]);
+
+    $response = $this->withHeader('Authorization', "Bearer {$this->token}")
+        ->postJson('/api/v1/admin/employee-commissions/calculate-sales', [
+            'employee_id' => $this->employee->id,
+            'month' => $month->toDateString(),
+        ]);
+
+    // Gross = 100000 + 50000 = 150000
+    // Returns = 25000 (cancelled 10000 & other rep's 30000 ignored)
+    // Net = 125000
+    $response->assertStatus(200)
+        ->assertJsonPath('data.gross_sales', 150000)
+        ->assertJsonPath('data.total_returns', 25000)
+        ->assertJsonPath('data.net_sales', 125000)
+        ->assertJsonPath('data.total_sales', 125000)
+        ->assertJsonPath('data.invoice_count', 2)
+        ->assertJsonPath('data.return_count', 1);
+});
+
+test('storing commission record with returns calculates commission on net sales', function () {
+    $month = now()->startOfMonth();
+    $customer = \App\Models\Customer::create(['name' => 'عميل اختبار 2', 'phone' => '0922222222']);
+
+    $inv = makeInvoice($this->employee, 100000, Invoice::STATUS_CONFIRMED, $month->copy()->addDays(2));
+    $inv->update(['customer_id' => $customer->id]);
+
+    \App\Models\CreditNote::create([
+        'credit_note_number' => 'CN-' . uniqid(),
+        'customer_id' => $customer->id,
+        'invoice_id' => $inv->id,
+        'issue_date' => $month->copy()->addDays(5)->toDateString(),
+        'subtotal' => 20000,
+        'total' => 20000,
+        'status' => \App\Models\CreditNote::STATUS_ISSUED,
+    ]);
+
+    $auth = ['Authorization' => "Bearer {$this->token}"];
+
+    // Commission rate: 10%
+    // Gross: 100000, Returns: 20000, Net: 80000
+    // Commission amount should be 80000 * 10% = 8000 (NOT 10000!)
+    $response = $this->postJson('/api/v1/admin/employee-commissions', [
+        'employee_id' => $this->employee->id,
+        'month' => $month->toDateString(),
+        'commission_rate' => 10,
+        'extra_expenses' => 500,
+        'monthly_target' => 100000,
+    ], $auth);
+
+    $response->assertStatus(201)
+        ->assertJsonPath('data.gross_sales', 100000)
+        ->assertJsonPath('data.total_returns', 20000)
+        ->assertJsonPath('data.net_sales', 80000)
+        ->assertJsonPath('data.commission_amount', 8000)
+        ->assertJsonPath('data.net_due', 7500)
+        ->assertJsonPath('data.achievement_rate', 80);
+});

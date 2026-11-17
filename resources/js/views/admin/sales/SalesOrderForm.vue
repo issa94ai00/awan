@@ -1,7 +1,16 @@
 <template>
-    <div class="pf-page order-form-page">
+    <el-drawer
+        v-model="visible"
+        :size="drawerSize"
+        :direction="drawerDirection"
+        :destroy-on-close="false"
+        class="pf-drawer order-drawer"
+        :before-close="confirmClose"
+        @opened="onOpened"
+        @closed="onClosed"
+    >
         <!-- Header: what this is, and the way out -->
-        <header class="pf-page-head">
+        <template #header>
             <div class="pf-title">
                 <span class="pf-title-icon is-order"><i class="fas fa-file-invoice"></i></span>
                 <div>
@@ -20,11 +29,8 @@
                 <el-button v-if="!isEdit && form.items.length" text type="danger" @click="clearOrder">
                     <i class="fas fa-trash-can"></i>&nbsp;{{ t('clear_the_form') }}
                 </el-button>
-                <el-button @click="goBack">
-                    <i class="fas" :class="backArrow"></i>&nbsp;{{ t('back_to_sales_orders') }}
-                </el-button>
             </div>
-        </header>
+        </template>
 
         <section v-if="loading" class="pf-card pf-skeleton">
             <el-skeleton :rows="8" animated />
@@ -652,7 +658,7 @@
         </div>
 
         <!-- Footer: the money at a glance and the ways to save -->
-        <footer v-if="!loading && !isLocked" class="pf-page-footer">
+        <template v-if="!loading && !isLocked" #footer>
             <div class="pf-footer">
                 <div class="pf-footer-sum">
                     <div class="pf-footer-metric is-main" :class="{ 'is-invalid': discountTooBig }">
@@ -678,7 +684,7 @@
                         <i class="fas fa-circle-exclamation"></i> {{ blocker }}
                     </span>
                     <span v-else class="pf-kbd-hint"><kbd>Ctrl</kbd> + <kbd>Enter</kbd> · <kbd>F2</kbd> {{ t('search') }} · <kbd>F4</kbd> {{ t('pqa_button') }}</span>
-                    <el-button @click="goBack">{{ t('cancel') }}</el-button>
+                    <el-button @click="closeForm">{{ t('cancel') }}</el-button>
                     <el-button
                         :type="!authStore.isSalesRep && !versioning ? 'default' : 'primary'"
                         :loading="saving === 'draft'"
@@ -698,7 +704,8 @@
                     </el-button>
                 </div>
             </div>
-        </footer>
+        </template>
+    </el-drawer>
         <!-- Quick Purchase Dialog -->
         <el-dialog
             v-if="canShowPurchase"
@@ -841,7 +848,6 @@
             @created="onQuickProductCreated"
             @use-existing="(row, qty) => addProduct(row, qty)"
         />
-    </div>
 </template>
 
 <script setup>
@@ -963,6 +969,48 @@ const currentRevision = computed(() => Number(loadedOrder.value?.revision) || 1)
 const revisionNote = ref('');
 const dirty = ref(false);
 let lineSeq = 0;
+
+/* Drawer ----------------------------------------------------------- */
+const visible = ref(true);
+const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1200);
+const onResize = () => { viewportWidth.value = window.innerWidth; };
+const drawerSize = computed(() => (viewportWidth.value < 1100 ? '100%' : '94%'));
+const drawerDirection = computed(() => (locale.value === 'ar' || (typeof document !== 'undefined' && document.documentElement.dir === 'rtl') ? 'rtl' : 'ltr'));
+
+const confirmClose = async (done) => {
+    if (dirty.value && !isEdit.value && form.items.length) {
+        try {
+            await ElMessageBox.confirm(
+                t('unsaved_order_warning') || 'هناك بيانات غير محفوظة في الطلب، هل تريد المغادرة؟',
+                t('leave_without_saving') || 'المغادرة دون حفظ',
+                {
+                    confirmButtonText: t('leave') || 'مغادرة',
+                    cancelButtonText: t('stay') || 'البقاء',
+                    type: 'warning',
+                }
+            );
+            done();
+        } catch {
+            return;
+        }
+    } else {
+        done();
+    }
+};
+
+const closeForm = () => {
+    confirmClose(() => {
+        visible.value = false;
+    });
+};
+
+const onClosed = () => {
+    goBack();
+};
+
+const onOpened = () => {
+    focusCatalog();
+};
 
 // Element handles used to move focus onto whichever field needs fixing.
 const formRoot = ref(null);
@@ -2230,8 +2278,10 @@ const submit = async (andConfirm) => {
         }
 
         if (orderIdToOpen) {
+            visible.value = false;
             openOrder(orderIdToOpen);
         } else {
+            visible.value = false;
             router.push('/admin/sales/sales-orders');
         }
     } catch (error) {
@@ -2241,10 +2291,12 @@ const submit = async (andConfirm) => {
                 errors[key] = Array.isArray(messages) ? messages[0] : String(messages);
             });
             serverErrors.value = Object.values(fieldErrors).flat();
+            formRoot.value?.scrollTo?.({ top: 0, behavior: 'smooth' });
         } else {
             const msg = error.response?.data?.message || error.message || t('failed_to_save_sales_order');
             serverErrors.value = [msg];
             ElMessage.error(msg);
+            formRoot.value?.scrollTo?.({ top: 0, behavior: 'smooth' });
         }
     } finally {
         saving.value = null;
@@ -2266,18 +2318,7 @@ const clearOrder = async () => {
     ElMessage.success(t('form_cleared'));
 };
 
-const goBack = async () => {
-    if (dirty.value && !isEdit.value && form.items.length) {
-        try {
-            await ElMessageBox.confirm(t('unsaved_order_warning'), t('leave_without_saving'), {
-                confirmButtonText: t('leave'),
-                cancelButtonText: t('stay'),
-                type: 'warning',
-            });
-        } catch {
-            return;
-        }
-    }
+const goBack = () => {
     router.push('/admin/sales/sales-orders');
 };
 
@@ -2323,6 +2364,7 @@ const onKeydown = (event) => {
 };
 
 onMounted(async () => {
+    window.addEventListener('resize', onResize);
     window.addEventListener('keydown', onKeydown);
     window.addEventListener('beforeunload', onBeforeUnload);
     await Promise.all([
@@ -2358,6 +2400,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+    window.removeEventListener('resize', onResize);
     window.removeEventListener('keydown', onKeydown);
     window.removeEventListener('beforeunload', onBeforeUnload);
     clearTimeout(draftTimer);

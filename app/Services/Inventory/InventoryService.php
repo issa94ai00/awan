@@ -381,17 +381,29 @@ class InventoryService
         $baseKey = $options['key'] ?? null;
 
         return DB::transaction(function () use ($productId, $quantity, $fromWarehouseId, $toWarehouseId, $options, $baseKey) {
-            $out = $this->issue($productId, $quantity, $fromWarehouseId, $options + [
+            // Per-leg keys must override the caller's base key. `$options + [...]`
+            // kept the caller's key on both legs, so the receive found the
+            // issue already recorded under it and silently skipped: the goods
+            // left the source and never arrived.
+            $out = $this->issue($productId, $quantity, $fromWarehouseId, array_merge($options, [
                 'key' => $baseKey ? $baseKey.':out' : null,
                 'reference' => $options['reference'] ?? null,
                 'source' => $options['source'] ?? 'transfer',
-            ]);
+            ]));
 
-            $in = $this->receive($productId, $quantity, $toWarehouseId, $options + [
+            // A transfer moves value, not just units: the destination layer is
+            // priced at what the source layers actually cost (FIFO/average just
+            // consumed), never at 0 or a catalogue guess. Without this every
+            // transferred unit landed at zero and later sold as pure profit.
+            if ($out && (float) $out->unit_cost > 0) {
+                $options['unit_cost'] = (float) $out->unit_cost;
+            }
+
+            $in = $this->receive($productId, $quantity, $toWarehouseId, array_merge($options, [
                 'key' => $baseKey ? $baseKey.':in' : null,
                 'reference' => $options['reference'] ?? null,
                 'source' => $options['source'] ?? 'transfer',
-            ]);
+            ]));
 
             return [$out, $in];
         });

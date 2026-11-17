@@ -432,6 +432,19 @@ class ProductController extends Controller
             Product::attachStorefrontSiblings([$product]);
         }
 
+        if ($request->filled('variant_id') || $request->filled('variant')) {
+            $variantId = (int) ($request->input('variant_id') ?: $request->input('variant'));
+            $variant = $product->variants->firstWhere('id', $variantId);
+            if (! $variant) {
+                $existsElsewhere = \App\Models\ProductVariant::where('id', $variantId)->exists();
+                if ($existsElsewhere) {
+                    abort(404, 'المتغير المحدد لا يتبع هذا المنتج');
+                }
+                abort(404, 'المتغير المحدد غير موجود');
+            }
+            $product->setVariantRow($variant);
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Product retrieved successfully',

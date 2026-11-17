@@ -15,6 +15,17 @@ class ProductResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        if (! $this->variant_id && ($request->filled('variant_id') || $request->filled('variant'))) {
+            $variantId = (int) ($request->input('variant_id') ?: $request->input('variant'));
+            $variant = $this->relationLoaded('variants')
+                ? $this->variants->firstWhere('id', $variantId)
+                : $this->variants()->find($variantId);
+
+            if ($variant && (int) $variant->product_id === (int) $this->id) {
+                $this->setVariantRow($variant);
+            }
+        }
+
         $data = $this->baseArray();
         $data = $this->variant_id ? $this->asVariantRow($data) : $data;
 
@@ -68,6 +79,11 @@ class ProductResource extends JsonResource
         $hasOwnPrice = $this->variant_price !== null && (float) $this->variant_price > 0;
         $stock = $this->variant_stock_quantity;
 
+        $specs = [];
+        if (! empty($this->variant_specs)) {
+            $specs = is_array($this->variant_specs) ? $this->variant_specs : json_decode((string) $this->variant_specs, true);
+        }
+
         return array_merge($data, [
             'listing_key' => $this->id.'-'.$this->variant_id,
             'variant_id' => $this->variant_id,
@@ -76,11 +92,17 @@ class ProductResource extends JsonResource
             'product_name_en' => $this->name_en,
             'name_ar' => $this->name_ar.$suffix,
             'name_en' => $this->name_en ? $this->name_en.$suffix : $this->name_en,
-            'sku' => $this->variant_sku ?: $this->sku,
-            'barcode' => $this->variant_barcode ?: $this->barcode,
-            'size' => $this->variant_size ?: $this->size,
-            'color' => $this->variant_color ?: $this->color,
-            'material' => $this->variant_material,
+            'sku' => $this->variant_sku ?? null,
+            'barcode' => $this->variant_barcode ?? null,
+            'size' => $this->variant_size ?? null,
+            'color' => $this->variant_color ?? null,
+            'material' => $this->variant_material ?? null,
+            'specs' => $specs ?: [],
+            'variant_specs' => $specs ?: [],
+            'parent_sku' => $this->sku,
+            'parent_barcode' => $this->barcode,
+            'parent_size' => $this->size,
+            'parent_color' => $this->color,
             // The product's sale price is a discount on the product's price,
             // not on a variant's own price, so it only carries over to a
             // variant that has no price of its own.

@@ -12,6 +12,7 @@ export const usePurchaseReceiptsStore = defineStore('purchaseReceipts', {
             current_page: 1,
             per_page: 20,
             total: 0,
+            last_page: 1,
         },
     }),
 
@@ -33,6 +34,7 @@ export const usePurchaseReceiptsStore = defineStore('purchaseReceipts', {
                     current_page: data.pagination.current_page || 1,
                     per_page: data.pagination.per_page || 20,
                     total: data.pagination.total || this.receipts.length,
+                    last_page: data.pagination.last_page || 1,
                 };
             } catch (error) {
                 this.error = error.response?.data?.message || error.message || 'Failed to load purchase receipts';

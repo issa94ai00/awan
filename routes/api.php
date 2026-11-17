@@ -203,6 +203,8 @@ Route::prefix('v1')->middleware('web')->group(function () {
     // the client's 401 handler logs the user out.
     Route::prefix('admin')->middleware(['auth:sanctum', 'feature'])->group(function () {
         Route::get('/products', [ProductController::class, 'index'])->name('api.admin.products.index');
+        Route::get('/warehouses', [WmsController::class, 'indexWarehouses'])->name('api.admin.warehouses.index');
+        Route::get('/sales-employees', [EmployeeController::class, 'salesEmployees'])->name('api.admin.sales-employees.index');
     });
     
     // Categories
@@ -214,6 +216,7 @@ Route::prefix('v1')->middleware('web')->group(function () {
     Route::get('/products', [ProductController::class, 'index'])->name('api.products.index');
     Route::get('/products/{product}', [ProductController::class, 'show'])->name('api.products.show');
     Route::get('/products/{product}/related', [ProductController::class, 'related'])->name('api.products.related');
+    Route::get('/product-variants/{variant}', [ProductVariantController::class, 'show'])->name('api.product-variants.show');
     
     // Search
     Route::get('/search', [SearchController::class, 'search'])->name('api.search');
@@ -334,6 +337,7 @@ Route::prefix('v1')->middleware('web')->group(function () {
             Route::post('/products', [ProductController::class, 'store'])->name('api.admin.products.store');
             Route::put('/products/{product}', [ProductController::class, 'update'])->middleware('edit_products')->name('api.admin.products.update');
             Route::delete('/products/{product}', [ProductController::class, 'destroy'])->middleware('edit_products')->name('api.admin.products.destroy');
+            Route::get('/product-variants/{variant}', [ProductVariantController::class, 'show'])->name('api.admin.product-variants.show');
             Route::post('/product-variants', [ProductVariantController::class, 'store'])->name('api.admin.product-variants.store');
             Route::put('/product-variants/{variant}', [ProductVariantController::class, 'update'])->middleware('edit_products')->name('api.admin.product-variants.update');
             Route::delete('/product-variants/{variant}', [ProductVariantController::class, 'destroy'])->middleware('edit_products')->name('api.admin.product-variants.destroy');
@@ -799,6 +803,8 @@ Route::prefix('v1')->middleware('web')->group(function () {
         Route::delete('/quotes/{quote}', [QuoteController::class, 'destroy'])->name('api.quotes.destroy');
         Route::post('/quotes/{quote}/convert-to-sales-order', [QuoteController::class, 'convertToSalesOrder'])->name('api.quotes.convert-to-sales-order');
         Route::post('/quotes/{quote}/duplicate', [QuoteController::class, 'duplicate'])->name('api.quotes.duplicate');
+        Route::post('/quotes/{quote}/approve', [QuoteController::class, 'approve'])->middleware('permission:quotes.approve')->name('api.quotes.approve');
+        Route::post('/quotes/{quote}/reject-approval', [QuoteController::class, 'rejectApproval'])->middleware('permission:quotes.approve')->name('api.quotes.reject-approval');
 
         // Sales Orders (طلبات بيع)
         // The {salesOrder} wildcard is constrained to numeric ids: without it, it

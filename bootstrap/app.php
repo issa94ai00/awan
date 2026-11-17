@@ -4,6 +4,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 
+use App\Http\Middleware\IdempotentRequest;
 use App\Http\Middleware\IsAdmin;
 use App\Http\Middleware\LoadSettings;
 use App\Http\Middleware\TrackVisitors;
@@ -51,6 +52,11 @@ return Application::configure(basePath: dirname(__DIR__))
         // requests the browser attaches automatically, whereas a bearer token
         // has to be read from storage and set deliberately, which a cross-site
         // attacker cannot do.
+        // Writes replayed by the mobile app's offline queue carry an
+        // Idempotency-Key; repeats get the first response back.
+        $middleware->api(prepend: [
+            IdempotentRequest::class,
+        ]);
         $middleware->validateCsrfTokens(except: [
             'api/*',
         ]);

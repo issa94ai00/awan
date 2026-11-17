@@ -40,7 +40,10 @@ class RepDashboardService
         $sales = fn () => $this->invoices($user)->whereIn('invoices.status', $recognized);
         $open = fn () => $this->invoices($user)->where('invoices.status', '!=', Invoice::STATUS_CANCELLED);
 
-        $month = (float) $sales()->where('invoices.created_at', '>=', $monthStart)->sum('total');
+        $monthGross = (float) $sales()->where('invoices.created_at', '>=', $monthStart)->sum('total');
+        $monthReturns = $employee?->id ? EmployeeCommission::computeReturnsForMonth($employee->id, now())['total_returns'] : 0.0;
+        $monthNet = round(max(0, $monthGross - $monthReturns), 2);
+
         $previousToDate = (float) $sales()->whereBetween('invoices.created_at', [
             now()->subMonthNoOverflow()->startOfMonth(),
             now()->subMonthNoOverflow(),
@@ -60,11 +63,13 @@ class RepDashboardService
             'sales' => [
                 'today' => (float) $sales()->whereDate('invoices.created_at', $today)->sum('total'),
                 'week' => (float) $sales()->where('invoices.created_at', '>=', $weekStart)->sum('total'),
-                'month' => $month,
+                'month' => $monthNet,
+                'month_gross' => $monthGross,
+                'month_returns' => $monthReturns,
                 'previous_month_to_date' => $previousToDate,
-                'growth' => $previousToDate > 0 ? round(($month - $previousToDate) / $previousToDate * 100, 1) : null,
+                'growth' => $previousToDate > 0 ? round(($monthNet - $previousToDate) / $previousToDate * 100, 1) : null,
                 'month_count' => $monthCount,
-                'average_value' => $monthCount ? round($month / $monthCount, 2) : 0,
+                'average_value' => $monthCount ? round($monthNet / $monthCount, 2) : 0,
             ],
             'collections' => [
                 'collected_month' => (float) Payment::query()
@@ -83,7 +88,7 @@ class RepDashboardService
                 'total' => (int) $open()->distinct()->count('customer_id'),
             ],
             'orders' => $this->orders($user),
-            'target' => $employee ? $this->target($employee->id, $month) : null,
+            'target' => $employee ? $this->target($employee->id, $monthNet) : null,
             'trend' => $this->trend($sales(), 30),
             'recent_invoices' => $this->invoiceRows($this->invoices($user)->latest('invoices.created_at')->limit(6)),
             'unpaid_invoices' => $this->invoiceRows($open()->where('due_amount', '>', 0)
@@ -153,6 +158,10 @@ class RepDashboardService
             'monthly_target' => $target,
             'commission_rate' => $rate,
             'sales' => $live['total_sales'],
+            'gross_sales' => $live['gross_sales'],
+            'total_returns' => $live['total_returns'],
+            'net_sales' => $live['net_sales'],
+            'return_count' => $live['return_count'],
             'achievement' => $target > 0 ? round($live['total_sales'] / $target * 100, 1) : null,
             'remaining' => max(0, round($target - $live['total_sales'], 2)),
             'days_left' => $daysLeft,

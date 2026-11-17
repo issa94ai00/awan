@@ -62,3 +62,6 @@ Thumbs.db
 
 # Database dumps must never be committed (or served from public/).
 public/*.sql
+
+# Local env backups hold secrets
+/.env.bak*

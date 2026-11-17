@@ -12,21 +12,32 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue';
+import { ref, onMounted, watch, provide } from 'vue';
 import AdminSidebar from '@/components/admin/AdminSidebar.vue';
 import AdminHeader from '@/components/admin/AdminHeader.vue';
 import { useSettingsStore } from '@/stores/settings';
 
-const sidebarCollapsed = ref(false);
+// Read synchronously (not in onMounted): child pages run their setup before
+// this layout mounts, and one folding the sidebar must not be undone after.
+const readSavedCollapsed = () => {
+    try {
+        const saved = localStorage.getItem('sidebarCollapsed');
+        return saved ? JSON.parse(saved) === true : false;
+    } catch {
+        return false;
+    }
+};
+const sidebarCollapsed = ref(readSavedCollapsed());
 const mobileSidebarOpen = ref(false);
+
+// Pages that want the room (e.g. the invoice form's focus mode) may fold the
+// sidebar for their lifetime. Setting it here is not persisted — only the
+// user's own toggle in AdminSidebar writes localStorage — so their choice
+// comes back when the page restores it.
+provide('adminSidebarCollapsed', sidebarCollapsed);
 const settingsStore = useSettingsStore();
 
 onMounted(async () => {
-    const savedState = localStorage.getItem('sidebarCollapsed');
-    if (savedState) {
-        sidebarCollapsed.value = JSON.parse(savedState);
-    }
-
     if (Object.keys(settingsStore.data).length === 0) {
         await settingsStore.fetch();
     }

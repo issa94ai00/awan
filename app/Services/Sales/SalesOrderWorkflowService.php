@@ -1249,6 +1249,59 @@ class SalesOrderWorkflowService
                 'unit_cost' => round($cost / $shipped * $item->stockFactor(), 5),
             ])->save();
         }
+
+        $this->syncInvoiceLineCosts($order);
+    }
+
+    /**
+     * Carries the order lines' measured cost onto the order's invoice.
+     *
+     * The invoice is written at confirmation, before anything ships, so its
+     * lines start uncosted; the cost only becomes known when the goods issue
+     * consumes layers and recordLineCosts() stamps it on the order line. Without
+     * this copy, every invoice raised from an order stayed uncosted forever and
+     * profit reports fell back to today's catalogue cost for it.
+     *
+     * Lines are paired one for one (writeInvoiceLines() creates them in order
+     * line order) on product, variant and unit, so a product on two lines still
+     * pairs with the right one.
+     */
+    public function syncInvoiceLineCosts(SalesOrder $order): int
+    {
+        $invoice = $this->existingInvoice($order);
+        if (! $invoice) {
+            return 0;
+        }
+
+        $orderLines = $order->items()->whereNotNull('unit_cost')->orderBy('id')->get();
+        if ($orderLines->isEmpty()) {
+            return 0;
+        }
+
+        $updated = 0;
+        $used = [];
+
+        foreach ($invoice->items()->orderBy('id')->get() as $line) {
+            $match = $orderLines->first(fn ($o) => ! isset($used[$o->id])
+                && (int) $o->product_id === (int) $line->product_id
+                && (int) $o->product_variant_id === (int) $line->product_variant_id
+                && (int) $o->product_unit_id === (int) $line->product_unit_id);
+
+            if (! $match) {
+                continue;
+            }
+
+            $used[$match->id] = true;
+            $unitCost = (float) $match->unit_cost;
+
+            $line->forceFill([
+                'unit_cost' => round($unitCost, 5),
+                'total_cost' => round($unitCost * (float) $line->quantity, 5),
+            ])->save();
+            $updated++;
+        }
+
+        return $updated;
     }
 
     private function shipmentSourcesFor($item, int $fallbackWarehouseId): array
@@ -1771,7 +1824,7 @@ class SalesOrderWorkflowService
             // `total` — none of which are columns on this table — so the insert
             // failed on the missing product_name and took the whole confirmation
             // down with it. That is why no order had ever reached the ledger.
-            $invoice->items()->create([
+            $line = $invoice->items()->create([
                 'warehouse_id' => $warehouseId,
                 'product_id' => $item->product_id,
                 'product_variant_id' => $item->product_variant_id,
@@ -1789,6 +1842,15 @@ class SalesOrderWorkflowService
                 'unit_name' => $item->unit_name,
                 'unit_multiplier' => $item->unit_multiplier ?? 1,
             ]);
+
+            // Already shipped (invoice raised late): the cost is known, carry
+            // it. Cost is outside $fillable on purpose, hence forceFill.
+            if ($item->unit_cost !== null) {
+                $line->forceFill([
+                    'unit_cost' => round((float) $item->unit_cost, 5),
+                    'total_cost' => round((float) $item->unit_cost * (float) $item->quantity, 5),
+                ])->save();
+            }
         }
     }
 

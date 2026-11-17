@@ -49,6 +49,15 @@ const routes = [
                 component: () => import('@/views/admin/DashboardHome.vue')
             },
             {
+                path: 'docs',
+                name: 'admin.docs',
+                component: () => import('@/views/admin/Documentation.vue')
+            },
+            {
+                path: 'documentation',
+                redirect: '/admin/docs'
+            },
+            {
                 path: 'products',
                 name: 'admin.products.index',
                 component: () => import('@/views/admin/products/Index.vue')

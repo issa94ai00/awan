@@ -1120,3 +1120,60 @@
         grid-template-columns: minmax(0, 1fr);
     }
 }
+
+/* Drawer presentation: appears over the sidebar like the purchase invoice */
+.invoice-drawer.el-drawer,
+.order-drawer.el-drawer {
+    --pf-gap: 1rem;
+    --pf-radius: 14px;
+    --pf-border: var(--el-border-color-lighter, #e5e7eb);
+    --pf-muted: var(--el-text-color-secondary, #6b7280);
+    --pf-surface: #ffffff;
+    --pf-canvas: #f5f7fb;
+    font-family: 'Cairo', sans-serif;
+}
+
+.invoice-drawer .el-drawer__header,
+.order-drawer .el-drawer__header {
+    margin: 0;
+    padding: 0.85rem 1.25rem;
+    border-bottom: 1px solid var(--pf-border);
+    background: var(--pf-surface);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.invoice-drawer .pf-page-actions,
+.order-drawer .pf-page-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-inline-start: auto;
+    margin-inline-end: 0.75rem;
+}
+
+.invoice-drawer .el-drawer__body,
+.order-drawer .el-drawer__body {
+    padding: 0;
+    background: var(--pf-canvas);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.invoice-drawer .el-drawer__footer,
+.order-drawer .el-drawer__footer {
+    padding: 0;
+    border-top: 1px solid var(--pf-border);
+    background: var(--pf-surface);
+}
+
+@media (max-width: 1199px) {
+    .invoice-drawer .el-drawer__body,
+    .order-drawer .el-drawer__body {
+        overflow-y: auto;
+    }
+}
+

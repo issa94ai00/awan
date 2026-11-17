@@ -29,11 +29,20 @@ class PurchaseReceiptController extends Controller
     {
         $query = PurchaseReceipt::with(['purchaseOrder', 'supplier', 'creator', 'items.product', 'items.variant', 'warehouse', 'payments']);
 
-        if ($request->has('supplier_id') && $request->supplier_id) {
+        if ($request->filled('supplier_id')) {
             $query->where('supplier_id', $request->supplier_id);
         }
 
-        $receipts = $query->latest()->paginate(min(100, max(1, (int) $request->input('per_page', 20))));
+        if ($request->filled('search')) {
+            $query->whereSearch(
+                ['receipt_number', 'notes', 'supplier.name', 'purchaseOrder.order_number'],
+                $request->input('search')
+            );
+        }
+
+        $perPage = min((int) $request->input('per_page', 20) ?: 20, 500);
+
+        $receipts = $query->latest()->paginate($perPage);
 
         return response()->json([
             'success' => true,

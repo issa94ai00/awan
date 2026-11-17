@@ -180,7 +180,7 @@ class ReplenishmentWorkflowService
                             'source' => 'transfer',
                             'reason' => 'استلام تزويد من ' . ($transfer->fromWarehouse->name ?? 'المستودع المصدر')
                                 . ' - ' . $transfer->transfer_number,
-                            'unit_cost' => (float) $item->unit_cost,
+                            'unit_cost' => $this->shippedUnitCost($transfer, $item),
                             'created_by' => $userId,
                             // The destination layer keeps the size it left as.
                             'cost_variant_id' => $item->product_variant_id,
@@ -297,6 +297,24 @@ class ReplenishmentWorkflowService
      *
      * @throws RuntimeException when the shelf can no longer cover it
      */
+    /**
+     * What the units actually cost when they left the source warehouse.
+     *
+     * The out-leg is costed against the source's FIFO/average layers and that
+     * figure is on its movement. The receive must carry the same value into
+     * the destination; the line's own unit_cost is only the catalogue price at
+     * request time (often 0), and using it priced every transferred unit at
+     * zero — so goods later sold from the destination showed 100% margin.
+     */
+    private function shippedUnitCost(InventoryTransfer $transfer, InventoryTransferItem $item): float
+    {
+        $actual = (float) DB::table('stock_movements')
+            ->where('movement_key', 'transfer:' . $transfer->id . ':item:' . $item->id . ':out')
+            ->value('unit_cost');
+
+        return $actual > 0 ? $actual : (float) $item->unit_cost;
+    }
+
     private function issueItem(InventoryTransfer $transfer, InventoryTransferItem $item, int $quantity): ?int
     {
         try {

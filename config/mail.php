@@ -65,6 +65,13 @@ return [
             'transport' => 'resend',
         ],
 
+        // Sends through Brevo's HTTPS API: this server's outbound SMTP ports
+        // (25/587) are blocked, so an SMTP mailer can't deliver from here.
+        'brevo' => [
+            'transport' => 'brevo',
+            'key' => env('BREVO_API_KEY'),
+        ],
+
         'sendmail' => [
             'transport' => 'sendmail',
             'path' => env('MAIL_SENDMAIL_PATH', '/usr/sbin/sendmail -bs -i'),

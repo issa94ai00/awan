@@ -52,8 +52,21 @@
                     <el-table-column :label="$t('month')" width="110">
                         <template #default="{ row }">{{ formatMonth(row.month) }}</template>
                     </el-table-column>
-                    <el-table-column :label="$t('total_sales')" width="130">
-                        <template #default="{ row }">{{ formatMoney(row.total_sales) }}</template>
+                    <el-table-column :label="$t('gross_sales')" min-width="125">
+                        <template #default="{ row }">{{ formatMoney(row.gross_sales || row.total_sales) }}</template>
+                    </el-table-column>
+                    <el-table-column :label="$t('total_returns')" min-width="110">
+                        <template #default="{ row }">
+                            <span v-if="(row.total_returns || 0) > 0" class="return-negative">
+                                -{{ formatMoney(row.total_returns) }}
+                            </span>
+                            <span v-else class="muted">—</span>
+                        </template>
+                    </el-table-column>
+                    <el-table-column :label="$t('net_sales')" min-width="125">
+                        <template #default="{ row }">
+                            <strong>{{ formatMoney(row.net_sales || row.total_sales) }}</strong>
+                        </template>
                     </el-table-column>
                     <el-table-column :label="$t('commission_rate')" width="90">
                         <template #default="{ row }">{{ row.commission_rate }}%</template>
@@ -129,12 +142,26 @@
                     />
                 </el-form-item>
 
-                <el-form-item :label="$t('total_sales')">
-                    <div class="sales-preview">
-                        <span>{{ formatMoney(previewSales.total_sales) }}</span>
-                        <span class="muted" v-if="previewSales.invoice_count !== null">
-                            ({{ previewSales.invoice_count }} {{ $t('invoice_count') }})
-                        </span>
+                <el-form-item :label="$t('sales_and_returns')">
+                    <div class="sales-preview-box">
+                        <div class="preview-metric">
+                            <span class="metric-label">{{ $t('gross_sales') }}:</span>
+                            <span class="metric-val">{{ formatMoney(previewSales.gross_sales ?? previewSales.total_sales) }}</span>
+                            <span class="metric-count" v-if="previewSales.invoice_count !== null">
+                                ({{ previewSales.invoice_count }} {{ $t('invoice_count') }})
+                            </span>
+                        </div>
+                        <div class="preview-metric" v-if="(previewSales.total_returns || 0) > 0">
+                            <span class="metric-label text-danger">{{ $t('total_returns') }}:</span>
+                            <span class="metric-val text-danger">-{{ formatMoney(previewSales.total_returns) }}</span>
+                            <span class="metric-count" v-if="previewSales.return_count !== null">
+                                ({{ previewSales.return_count }} {{ $t('returns_count') }})
+                            </span>
+                        </div>
+                        <div class="preview-metric net-row">
+                            <span class="metric-label font-bold">{{ $t('net_sales') }}:</span>
+                            <span class="metric-val font-bold text-success">{{ formatMoney(previewSales.net_sales ?? previewSales.total_sales) }}</span>
+                        </div>
                         <el-button size="small" text :loading="recalculating" @click="refreshSales">
                             {{ $t('recalculate_sales') }}
                         </el-button>
@@ -213,7 +240,15 @@ const isEditing = ref(false);
 const saving = ref(false);
 const recalculating = ref(false);
 const editingId = ref(null);
-const previewSales = reactive({ total_sales: 0, invoice_count: null });
+const previewSales = reactive({
+    gross_sales: 0,
+    total_returns: 0,
+    net_sales: 0,
+    total_sales: 0,
+    invoice_count: null,
+    return_count: null,
+    returns: []
+});
 
 const form = reactive({
     employee_id: null,
@@ -254,17 +289,27 @@ const formatDateTimeShort = (value) => String(value || '').replace('T', ' ').sli
 
 const printRow = ref(null);
 const printWithdrawals = reactive({ transactions: [], breakdown: [] });
+const printReturns = reactive({ list: [] });
 
 const openPrintView = async (row) => {
     printRow.value = row;
     printWithdrawals.transactions = [];
     printWithdrawals.breakdown = [];
+    printReturns.list = [];
     try {
         const data = await store.fetchWithdrawals(row.id);
         printWithdrawals.transactions = data.transactions || [];
         printWithdrawals.breakdown = data.breakdown || [];
     } catch {
         // The statement still prints with the totals already on the row.
+    }
+    if ((row.total_returns || 0) > 0) {
+        try {
+            const salesData = await store.calculateSales({ employee_id: row.employee_id, month: row.month });
+            printReturns.list = salesData.returns || [];
+        } catch {
+            // Keep printing with the total already on the row
+        }
     }
 };
 
@@ -312,14 +357,27 @@ const printText = computed(() => {
         lines.push(divider);
     }
 
+    if (printReturns.list.length) {
+        lines.push(`${t('total_returns')}:`);
+        printReturns.list.forEach((ret, index) => {
+            lines.push(
+                `${index + 1}. ${ret.number} (${ret.date}) - ${formatMoney(ret.amount)} `
+                + `[${ret.customer_name || ''}${ret.invoice_number ? ' / فاتورة ' + ret.invoice_number : ''}]`
+            );
+        });
+        lines.push(divider);
+    }
+
     lines.push(
-        `1. ${t('total_sales')}: ${formatMoney(row.total_sales)}`,
-        `2. ${t('commission_rate')}: ${row.commission_rate}%`,
-        `3. ${t('commission_amount')}: ${formatMoney(row.commission_amount)}`,
-        `4. ${t('total_withdrawals')}: ${formatMoney(row.withdrawals)}`,
-        `5. ${t('extra_expenses')}: ${formatMoney(row.extra_expenses)}`,
-        `6. ${t('net_due')}: ${formatMoney(row.net_due)}`,
-        `7. ${t('final_balance')}: ${formatMoney(Math.abs(row.balance))}`,
+        `1. ${t('gross_sales')}: ${formatMoney(row.gross_sales || row.total_sales)}`,
+        `2. ${t('total_returns')}: ${formatMoney(row.total_returns || 0)}`,
+        `3. ${t('net_sales')}: ${formatMoney(row.net_sales || row.total_sales)}`,
+        `4. ${t('commission_rate')}: ${row.commission_rate}%`,
+        `5. ${t('commission_amount')}: ${formatMoney(row.commission_amount)}`,
+        `6. ${t('total_withdrawals')}: ${formatMoney(row.withdrawals)}`,
+        `7. ${t('extra_expenses')}: ${formatMoney(row.extra_expenses)}`,
+        `8. ${t('net_due')}: ${formatMoney(row.net_due)}`,
+        `9. ${t('final_balance')}: ${formatMoney(Math.abs(row.balance))}`,
         `   ${t('status')}: ${box(status === 'creditor')} ${t('creditor')}  ${box(status === 'debtor')} ${t('debtor')}  ${box(status === 'balanced')} ${t('balanced')}`,
         divider,
         `${t('signatures')}: ${t('employee')}: .........  ${t('role_manager')}: .........  ${t('hr')}: .........`,
@@ -356,8 +414,13 @@ const resetForm = () => {
     form.withdrawals = 0;
     form.monthly_target = null;
     form.notes = '';
+    previewSales.gross_sales = 0;
+    previewSales.total_returns = 0;
+    previewSales.net_sales = 0;
     previewSales.total_sales = 0;
     previewSales.invoice_count = null;
+    previewSales.return_count = null;
+    previewSales.returns = [];
 };
 
 const openCreateDialog = () => {
@@ -377,8 +440,13 @@ const openEditDialog = (row) => {
     form.withdrawals = Number(row.withdrawals);
     form.monthly_target = row.monthly_target !== null ? Number(row.monthly_target) : null;
     form.notes = row.notes || '';
+    previewSales.gross_sales = Number(row.gross_sales || row.total_sales);
+    previewSales.total_returns = Number(row.total_returns || 0);
+    previewSales.net_sales = Number(row.net_sales || row.total_sales);
     previewSales.total_sales = Number(row.total_sales);
     previewSales.invoice_count = null;
+    previewSales.return_count = null;
+    previewSales.returns = [];
     dialogVisible.value = true;
 };
 
@@ -400,8 +468,13 @@ const refreshSales = async () => {
     recalculating.value = true;
     try {
         const result = await store.calculateSales({ employee_id: form.employee_id, month: form.month });
+        previewSales.gross_sales = result.gross_sales ?? result.total_sales;
+        previewSales.total_returns = result.total_returns ?? 0;
+        previewSales.net_sales = result.net_sales ?? result.total_sales;
         previewSales.total_sales = result.total_sales;
         previewSales.invoice_count = result.invoice_count;
+        previewSales.return_count = result.return_count;
+        previewSales.returns = result.returns || [];
     } catch (error) {
         ElMessage.error(error.response?.data?.message || t('failed_to_save_commission_record'));
     } finally {
@@ -534,6 +607,59 @@ onMounted(() => {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+}
+
+.return-negative {
+    color: #dc2626;
+    font-weight: 600;
+}
+
+.sales-preview-box {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.65rem 0.85rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.5rem;
+    width: 100%;
+}
+
+.preview-metric {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.preview-metric.net-row {
+    padding-top: 0.35rem;
+    border-top: 1px dashed #cbd5e1;
+}
+
+.metric-label {
+    color: #475569;
+}
+
+.metric-val {
+    font-weight: 600;
+}
+
+.metric-count {
+    color: #94a3b8;
+    font-size: 0.82rem;
+}
+
+.text-danger {
+    color: #dc2626 !important;
+}
+
+.text-success {
+    color: #16a34a !important;
+}
+
+.font-bold {
+    font-weight: 700 !important;
 }
 
 .print-overlay {

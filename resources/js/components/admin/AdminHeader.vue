@@ -109,6 +109,18 @@
         </transition>
 
         <div class="header-right">
+            <!-- Documentation Link -->
+            <el-tooltip :content="t('documentation') || 'توثيق النظام'" placement="bottom">
+                <router-link
+                    to="/admin/docs"
+                    class="header-action-btn docs-btn"
+                    :title="t('documentation') || 'توثيق النظام'"
+                    :aria-label="t('documentation') || 'توثيق النظام'"
+                >
+                    <el-icon :size="18"><Reading /></el-icon>
+                </router-link>
+            </el-tooltip>
+
             <!-- Language Switcher -->
             <el-dropdown @command="handleLanguageCommand" class="language-dropdown" trigger="click">
                 <button type="button" class="lang-pill-btn" :title="t('language') || 'اللغة'">
@@ -405,6 +417,10 @@
                             <el-icon><User /></el-icon>
                             <span>{{ t('profile') }}</span>
                         </el-dropdown-item>
+                        <el-dropdown-item command="docs">
+                            <el-icon><Reading /></el-icon>
+                            <span>{{ t('documentation') }}</span>
+                        </el-dropdown-item>
                         <el-dropdown-item v-if="authStore.canOpenSettings" command="settings">
                             <el-icon><Setting /></el-icon>
                             <span>{{ t('settings') }}</span>
@@ -434,7 +450,7 @@ import {
     SwitchButton, ArrowDown, Loading, Box, ShoppingCart,
     Document, UserFilled, Tickets, Check, Delete, Refresh,
     Warning, WarningFilled, InfoFilled, CircleCheck, ArrowRight,
-    Money, MuteNotification, BellFilled, Close
+    Money, MuteNotification, BellFilled, Close, Reading
 } from '@element-plus/icons-vue';
 
 const { t, locale } = useI18n();
@@ -494,6 +510,9 @@ const handleDropdownCommand = (command) => {
     switch (command) {
         case 'profile':
             router.push('/admin/profile');
+            break;
+        case 'docs':
+            router.push('/admin/docs');
             break;
         case 'settings':
             router.push('/admin/settings');

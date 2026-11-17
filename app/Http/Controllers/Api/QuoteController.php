@@ -9,6 +9,8 @@ use App\Models\Product;
 use App\Models\Quote;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderStatusHistory;
+use App\Models\User;
+use App\Services\NotificationService;
 use App\Support\DocumentNumbers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -20,6 +22,7 @@ class QuoteController extends Controller
     private const RELATIONS = [
         'customer:id,name,phone,company',
         'creator:id,name',
+        'approver:id,name',
         'salesOrder:id,quote_id,order_number,status',
     ];
 
@@ -35,6 +38,10 @@ class QuoteController extends Controller
         // validity filters do not: the cards are how you pick one.
         $this->applyScope($query, $request);
         $summary = $this->summary(clone $query);
+
+        if (in_array($request->input('approval_status'), [Quote::APPROVAL_PENDING, Quote::APPROVAL_APPROVED, Quote::APPROVAL_REJECTED], true)) {
+            $query->where('approval_status', $request->approval_status);
+        }
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);
@@ -101,7 +108,7 @@ class QuoteController extends Controller
                 'notes' => $validated['notes'] ?? null,
                 'terms' => $validated['terms'] ?? null,
                 'created_by' => auth()->id(),
-            ] + $totals);
+            ] + $totals + $this->approvalOnSave());
 
             foreach ($lines as $line) {
                 $quote->items()->create($line);
@@ -109,6 +116,8 @@ class QuoteController extends Controller
 
             return $quote;
         });
+
+        $this->notifyApproversIfPending($quote);
 
         return response()->json([
             'success' => true,
@@ -153,18 +162,21 @@ class QuoteController extends Controller
         DB::transaction(function () use ($quote, $validated, $lines, $totals) {
             // Status moves only through updateStatus(), where the transition
             // rules live; a full save must not slip one past them.
+            // Changed prices or lines need approving again.
             $quote->update([
                 'customer_id' => $validated['customer_id'],
                 'valid_until' => $validated['valid_until'] ?? null,
                 'notes' => $validated['notes'] ?? null,
                 'terms' => $validated['terms'] ?? null,
-            ] + $totals);
+            ] + $totals + $this->approvalOnSave());
 
             $quote->items()->delete();
             foreach ($lines as $line) {
                 $quote->items()->create($line);
             }
         });
+
+        $this->notifyApproversIfPending($quote->refresh());
 
         return response()->json([
             'success' => true,
@@ -198,6 +210,10 @@ class QuoteController extends Controller
 
         if ($quote->salesOrder()->exists()) {
             return $this->refuse('تحوّل عرض السعر إلى طلب بيع، فلا تتغير حالته.', 422);
+        }
+
+        if (in_array($status, Quote::NEEDS_APPROVAL, true) && ! $quote->isApproved()) {
+            return $this->refuse('يجب اعتماد عرض السعر من المدير قبل إرساله للعميل.', 422);
         }
 
         if (! $quote->canMoveTo($status)) {
@@ -267,7 +283,7 @@ class QuoteController extends Controller
                 'notes' => $quote->notes,
                 'terms' => $quote->terms,
                 'created_by' => auth()->id(),
-            ]);
+            ] + $this->approvalOnSave());
 
             foreach ($quote->items as $item) {
                 $copy->items()->create($item->only(['product_id', 'description', 'quantity', 'unit_price', 'discount', 'tax']));
@@ -275,6 +291,8 @@ class QuoteController extends Controller
 
             return $copy;
         });
+
+        $this->notifyApproversIfPending($copy);
 
         return response()->json([
             'success' => true,
@@ -366,6 +384,129 @@ class QuoteController extends Controller
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────────
+
+    /** A manager approves the quote, so the rep may send it to the customer. */
+    public function approve(Request $request, Quote $quote)
+    {
+        return $this->decideApproval($request, $quote, Quote::APPROVAL_APPROVED);
+    }
+
+    /** A manager sends the quote back to the rep, with the reason. */
+    public function rejectApproval(Request $request, Quote $quote)
+    {
+        return $this->decideApproval($request, $quote, Quote::APPROVAL_REJECTED);
+    }
+
+    private function decideApproval(Request $request, Quote $quote, string $decision)
+    {
+        $this->authorizeQuote($quote);
+
+        $validated = $request->validate([
+            'note' => ($decision === Quote::APPROVAL_REJECTED ? 'required' : 'nullable').'|string|max:1000',
+        ]);
+
+        if ($quote->salesOrder()->exists() || ! in_array($quote->status, Quote::EDITABLE_STATUSES, true)) {
+            return $this->refuse('لا يمكن تغيير اعتماد عرض سعر أُغلق أو تحوّل إلى طلب بيع.', 422);
+        }
+
+        $quote->update([
+            'approval_status' => $decision,
+            'approved_by' => auth()->id(),
+            'approved_at' => now(),
+            'approval_note' => $validated['note'] ?? null,
+        ]);
+
+        if ($quote->created_by && (int) $quote->created_by !== (int) auth()->id()) {
+            $approved = $decision === Quote::APPROVAL_APPROVED;
+            $this->notify(
+                [$quote->created_by],
+                $approved ? "تم اعتماد عرض السعر {$quote->quote_number}" : "رُفض اعتماد عرض السعر {$quote->quote_number}",
+                $approved
+                    ? 'يمكنك الآن إرسال العرض للعميل.'
+                    : 'السبب: '.($validated['note'] ?? ''),
+                $quote,
+            );
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $decision === Quote::APPROVAL_APPROVED ? 'تم اعتماد عرض السعر' : 'تم رفض اعتماد عرض السعر',
+            'data' => $this->loadFull($quote),
+        ]);
+    }
+
+    private function canApprove(): bool
+    {
+        return (bool) auth()->user()?->hasPermission('quotes.approve');
+    }
+
+    /**
+     * Approval fields for a quote being written: an approver's own quote is
+     * approved as written; anyone else's waits for a manager.
+     */
+    private function approvalOnSave(): array
+    {
+        if ($this->canApprove()) {
+            return [
+                'approval_status' => Quote::APPROVAL_APPROVED,
+                'approved_by' => auth()->id(),
+                'approved_at' => now(),
+                'approval_note' => null,
+            ];
+        }
+
+        return [
+            'approval_status' => Quote::APPROVAL_PENDING,
+            'approved_by' => null,
+            'approved_at' => null,
+            'approval_note' => null,
+        ];
+    }
+
+    private function notifyApproversIfPending(Quote $quote): void
+    {
+        if ($quote->approval_status !== Quote::APPROVAL_PENDING) {
+            return;
+        }
+
+        $roleIds = DB::table('role_has_permissions')
+            ->join('permissions', 'permissions.id', '=', 'role_has_permissions.permission_id')
+            ->where('permissions.name', 'quotes.approve')
+            ->pluck('role_has_permissions.role_id');
+
+        $userIds = User::whereHas('roles', fn ($q) => $q->whereIn('roles.id', $roleIds))
+            ->pluck('id')
+            ->merge(app(NotificationService::class)->adminIds())
+            ->unique()
+            ->reject(fn ($id) => (int) $id === (int) auth()->id())
+            ->values()
+            ->all();
+
+        $customer = $quote->customer()->value('name');
+        $this->notify(
+            $userIds,
+            "عرض سعر بانتظار الاعتماد {$quote->quote_number}",
+            trim(($customer ? "العميل: {$customer} — " : '').'الإجمالي: '.number_format((float) $quote->total, 2)),
+            $quote,
+        );
+    }
+
+    /** Best effort: a notification failure must never undo the quote. */
+    private function notify(array $userIds, string $title, string $message, Quote $quote): void
+    {
+        if ($userIds === []) {
+            return;
+        }
+
+        try {
+            app(NotificationService::class)->sendToUsers($userIds, $title, $message, 'quote', [
+                'quote_id' => $quote->id,
+                'quote_number' => $quote->quote_number,
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
 
     private function validateQuote(Request $request): array
     {
@@ -509,6 +650,10 @@ class QuoteController extends Controller
             'is_past_validity' => $quote->isPastValidity(),
             'allowed_statuses' => $quote->salesOrder ? [] : (Quote::TRANSITIONS[$quote->status] ?? []),
             'is_editable' => ! $quote->salesOrder && in_array($quote->status, Quote::EDITABLE_STATUSES, true),
+            // Sending or sharing the quote with the customer waits for approval.
+            'can_share' => $quote->isApproved(),
+            'can_approve' => $this->canApprove() && ! $quote->salesOrder
+                && in_array($quote->status, Quote::EDITABLE_STATUSES, true),
         ];
     }
 
@@ -518,6 +663,7 @@ class QuoteController extends Controller
         $quote->refresh()->load([
             'customer:id,name,phone,company,email,address,tax_number',
             'creator:id,name',
+            'approver:id,name',
             'salesOrder:id,quote_id,order_number,status',
             'items.product:id,name_ar,name_en,sku,unit,price,image_main',
         ]);
