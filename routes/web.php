@@ -14,6 +14,11 @@ use Illuminate\Support\Facades\Route;
 // robots.txt is served by the app (instead of a static public/robots.txt) so the
 // Sitemap directive is always an absolute URL for the current APP_URL. Crawlers
 // ignore relative sitemap paths.
+// Database documentation: admin-only, opened through a signed link that
+// GET /api/v1/admin/erd-link hands out (see ErdController).
+Route::get('/internal/erd', [\App\Http\Controllers\ErdController::class, 'show'])
+    ->middleware('signed')->name('erd.show');
+
 Route::get('/robots.txt', function () {
     $lines = [
         'User-agent: *',

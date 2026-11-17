@@ -45,10 +45,12 @@ function mobileProduct(): Product
 
 it('attributes an app order to the rep who raised it and makes the customer theirs', function () {
     $warehouse = mobileWarehouse();
-    $employee = mobileEmployee($warehouse, 'rep.one@example.com');
+    $rep = User::factory()->create();
+    $employee = mobileEmployee($warehouse, 'rep.one@example.com', $rep);
     $product = mobileProduct();
 
-    $response = $this->postJson('/api/v1/purchase-requests', [
+    // The app sends the rep's own login token with the order.
+    $response = $this->actingAs($rep, 'sanctum')->postJson('/api/v1/purchase-requests', [
         'name' => 'عميل التطبيق',
         'phone' => '966500001111',
         'address' => 'دمشق',
@@ -90,8 +92,10 @@ it('leaves an app order unattributed when no rep is sent', function () {
 
 it('does not demote the primary rep when a second rep serves the same customer', function () {
     $warehouse = mobileWarehouse();
-    $first = mobileEmployee($warehouse, 'rep.first@example.com');
-    $second = mobileEmployee($warehouse, 'rep.second@example.com');
+    $firstUser = User::factory()->create();
+    $secondUser = User::factory()->create();
+    $first = mobileEmployee($warehouse, 'rep.first@example.com', $firstUser);
+    $second = mobileEmployee($warehouse, 'rep.second@example.com', $secondUser);
     $product = mobileProduct();
 
     $payload = [
@@ -101,9 +105,9 @@ it('does not demote the primary rep when a second rep serves the same customer',
         'items' => [['product_id' => $product->id, 'quantity' => 1]],
     ];
 
-    $this->postJson('/api/v1/purchase-requests', $payload + ['employee_id' => $first->id])
+    $this->actingAs($firstUser, 'sanctum')->postJson('/api/v1/purchase-requests', $payload + ['employee_id' => $first->id])
         ->assertStatus(201);
-    $this->postJson('/api/v1/purchase-requests', $payload + ['employee_id' => $second->id])
+    $this->actingAs($secondUser, 'sanctum')->postJson('/api/v1/purchase-requests', $payload + ['employee_id' => $second->id])
         ->assertStatus(201);
 
     $customer = Customer::where('phone', '966500003333')->firstOrFail();
@@ -152,7 +156,7 @@ it('lists customers a rep earned through an order, not only those they created',
     $employee = mobileEmployee($warehouse, 'rep.list@example.com', $user);
     $product = mobileProduct();
 
-    $this->postJson('/api/v1/purchase-requests', [
+    $this->actingAs($user, 'sanctum')->postJson('/api/v1/purchase-requests', [
         'name' => 'عميل من الطلبية',
         'phone' => '966500006666',
         'employee_id' => $employee->id,
@@ -168,4 +172,55 @@ it('lists customers a rep earned through an order, not only those they created',
         ->getJson('/api/v1/staff/customers')
         ->assertOk()
         ->assertJsonPath('data.0.phone', '966500006666');
+});
+
+it('ignores a rep named by a visitor who is not signed in as that rep', function () {
+    $warehouse = mobileWarehouse();
+    $employee = mobileEmployee($warehouse, 'rep.claimed@example.com', User::factory()->create());
+    $otherRep = User::factory()->create();
+    mobileEmployee($warehouse, 'rep.other@example.com', $otherRep);
+    $product = mobileProduct();
+    $payload = ['name' => 'زائر', 'items' => [['product_id' => $product->id, 'quantity' => 1]], 'employee_id' => $employee->id];
+
+    // Anonymous, and signed in as a different rep: neither may claim it.
+    $this->postJson('/api/v1/purchase-requests', $payload + ['phone' => '966500007777'])->assertStatus(201);
+    $this->actingAs($otherRep, 'sanctum')->postJson('/api/v1/purchase-requests', $payload + ['phone' => '966500008888'])->assertStatus(201);
+
+    expect(SalesOrder::whereNotNull('assigned_employee_id')->count())->toBe(0)
+        ->and(Customer::whereNotNull('employee_id')->count())->toBe(0);
+});
+
+it('does not let a guest rename an existing customer by their phone number', function () {
+    $customer = Customer::create(['name' => 'الاسم الأصلي', 'phone' => '966500009999', 'address' => 'العنوان الأصلي', 'status' => 'active']);
+
+    $this->postJson('/api/v1/purchase-requests', [
+        'name' => 'اسم مزيف', 'phone' => '966500009999', 'address' => 'عنوان مزيف',
+        'items' => [['product_id' => mobileProduct()->id, 'quantity' => 1]],
+    ])->assertStatus(201);
+
+    expect($customer->fresh()->name)->toBe('الاسم الأصلي')
+        ->and($customer->fresh()->address)->toBe('العنوان الأصلي');
+});
+
+it('shows a guest their orders only with phone and one of their order numbers', function () {
+    $response = $this->postJson('/api/v1/purchase-requests', [
+        'name' => 'ضيف', 'phone' => '966500001234',
+        'items' => [['product_id' => mobileProduct()->id, 'quantity' => 1]],
+    ])->assertStatus(201);
+    $number = $response->json('data.order_number');
+
+    $this->getJson('/api/v1/purchase-requests/orders?phone=966500001234')->assertStatus(422);
+    $this->getJson('/api/v1/purchase-requests/orders?phone=966500001234&order_number=SO-999999')->assertStatus(404);
+    $this->getJson('/api/v1/purchase-requests/orders?phone=966500001234&order_number='.$number)
+        ->assertOk()->assertJsonPath('success', true);
+});
+
+it('does not hand out a login for an existing customer through subscribe', function () {
+    Customer::create(['name' => 'صاحب الحساب', 'phone' => '966500004321', 'status' => 'active', 'password' => bcrypt('original-secret')]);
+
+    $this->postJson('/api/v1/subscribe', ['name' => 'مهاجم', 'phone' => '966500004321', 'password' => 'attacker-pass'])
+        ->assertStatus(409)
+        ->assertJsonMissingPath('data.token');
+
+    expect(\Illuminate\Support\Facades\Hash::check('original-secret', Customer::where('phone', '966500004321')->value('password')))->toBeTrue();
 });

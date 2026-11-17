@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use App\Support\TrustedEmployee;
 
 class CustomerAuthController extends Controller
 {
@@ -43,7 +44,8 @@ class CustomerAuthController extends Controller
             'status' => 'active',
             'company' => $request->company,
             'address' => $request->address,
-            'employee_id' => $validated['employee_id'] ?? null,
+            // Only a rep signed in to the app can claim the customer.
+            'employee_id' => TrustedEmployee::resolve($validated['employee_id'] ?? null),
         ]);
 
         return response()->json([

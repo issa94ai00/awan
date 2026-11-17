@@ -41,7 +41,7 @@ if (! function_exists('base_currency_code')) {
                 return app(CurrencyService::class)->baseCode();
             }
         } catch (Throwable $e) {
-            // ignore
+            // Fresh install or an unreadable currencies table: the setting below answers.
         }
 
         // Matches CurrencyService::FALLBACK — the two are read as the same answer
@@ -61,7 +61,7 @@ if (! function_exists('active_currencies')) {
                 return app(CurrencyService::class)->active()->values()->all();
             }
         } catch (Throwable $e) {
-            // ignore
+            // Fresh install or an unreadable currencies table: no currencies to offer.
         }
 
         return [];

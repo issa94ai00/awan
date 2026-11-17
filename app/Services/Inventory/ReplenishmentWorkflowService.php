@@ -4,6 +4,7 @@ namespace App\Services\Inventory;
 
 use App\Models\InventoryTransfer;
 use App\Models\InventoryTransferItem;
+use App\Services\Accounting\LedgerPostingService;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -58,7 +59,7 @@ class ReplenishmentWorkflowService
             throw new RuntimeException('طريقة تنفيذ غير معروفة: ' . $method);
         }
 
-        return DB::transaction(function () use ($transfer, $method, $userId) {
+        $effects = DB::transaction(function () use ($transfer, $method, $userId) {
             // Locked first: two warehouse staff approving at the same moment
             // would otherwise both pass the check below and ship twice.
             $transfer = InventoryTransfer::whereKey($transfer->id)->lockForUpdate()->firstOrFail();
@@ -93,6 +94,12 @@ class ReplenishmentWorkflowService
 
             return $effects + ['status' => $transfer->status];
         });
+
+        if ($method === InventoryTransfer::METHOD_DELIVERY) {
+            $this->postToLedger($transfer->refresh()->load('items'), shipment: true, receipt: false);
+        }
+
+        return $effects;
     }
 
     /**
@@ -112,7 +119,7 @@ class ReplenishmentWorkflowService
      */
     public function receive(InventoryTransfer $transfer, array $receivedByItem = [], ?int $userId = null): array
     {
-        return DB::transaction(function () use ($transfer, $receivedByItem, $userId) {
+        $effects = DB::transaction(function () use ($transfer, $receivedByItem, $userId) {
             $transfer = InventoryTransfer::whereKey($transfer->id)->lockForUpdate()->firstOrFail();
             $transfer->load('items.product');
 
@@ -221,6 +228,49 @@ class ReplenishmentWorkflowService
                 'discrepancies' => $discrepancies,
             ];
         });
+
+        // A pickup moves nothing until now, so both legs post here; a delivery
+        // already posted its shipment when it left.
+        $transfer->refresh()->load('items');
+        $this->postToLedger($transfer, shipment: $transfer->isPickup(), receipt: true);
+
+        return $effects;
+    }
+
+    /**
+     * Books the transfer in the ledger, after the stock has moved.
+     *
+     *   shipment:  Dr Goods in transit (1006)   Cr Inventory — source
+     *   receipt:   Dr Inventory — destination   Cr Goods in transit
+     *
+     * Both legs are valued at the cost the goods left with, so a full
+     * delivery nets in-transit to zero and a short one leaves the missing
+     * value there for someone to account for. The posting methods existed but
+     * nothing called them: stock moved between warehouses while each
+     * warehouse's inventory account stayed where it was.
+     *
+     * Keyed per transfer, so a replay posts nothing twice. A posting failure
+     * is reported rather than thrown — the goods have already moved, and
+     * undoing that over a ledger problem would be worse.
+     */
+    private function postToLedger(InventoryTransfer $transfer, bool $shipment, bool $receipt): void
+    {
+        $ledger = app(LedgerPostingService::class);
+        $label = (string) $transfer->transfer_number;
+
+        try {
+            if ($shipment) {
+                $cost = $transfer->items->sum(fn ($item) => (int) $item->quantity_shipped * $this->shippedUnitCost($transfer, $item));
+                $ledger->postTransferShipment('transfer_ship:'.$transfer->id, (int) $transfer->from_warehouse_id, $cost, $label, $transfer);
+            }
+
+            if ($receipt) {
+                $cost = $transfer->items->sum(fn ($item) => (int) $item->quantity_received * $this->shippedUnitCost($transfer, $item));
+                $ledger->postTransferReceipt('transfer_receive:'.$transfer->id, (int) $transfer->to_warehouse_id, $cost, $label, $transfer);
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     /**

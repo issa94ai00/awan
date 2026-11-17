@@ -269,6 +269,52 @@ class PackingService
     }
 
     /**
+     * Close a manifest that is on the road: every item not yet delivered is
+     * marked delivered now, then the manifest itself.
+     */
+    public function completeManifest(ShippingManifest $manifest): void
+    {
+        if ($manifest->status !== ShippingManifest::STATUS_IN_TRANSIT) {
+            throw new \Exception('Manifest is not in transit');
+        }
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($manifest) {
+            $manifest->items()
+                ->where('delivery_status', '!=', ShippingManifestItem::DELIVERY_STATUS_DELIVERED)
+                ->get()
+                ->each->markAsDelivered();
+
+            $manifest->markAsDelivered();
+        });
+    }
+
+    /**
+     * Manifest and package counts by status, optionally for one warehouse
+     * and a date range (on the manifest's creation date).
+     */
+    public function getShippingStatistics($warehouseId = null, $fromDate = null, $toDate = null): array
+    {
+        $manifests = ShippingManifest::query()
+            ->when($warehouseId, fn ($q) => $q->where('warehouse_id', $warehouseId))
+            ->when($fromDate, fn ($q) => $q->where('created_at', '>=', $fromDate))
+            ->when($toDate, fn ($q) => $q->where('created_at', '<=', $toDate));
+
+        $items = ShippingManifestItem::query()
+            ->whereIn('shipping_manifest_id', (clone $manifests)->select('id'));
+
+        return [
+            'total_manifests' => (clone $manifests)->count(),
+            'manifests_by_status' => (clone $manifests)->selectRaw('status, COUNT(*) as count')
+                ->groupBy('status')->pluck('count', 'status'),
+            'total_packages' => (int) (clone $manifests)->sum('total_packages'),
+            'total_weight' => round((float) (clone $manifests)->sum('total_weight'), 2),
+            'total_shipping_cost' => round((float) (clone $manifests)->sum('shipping_cost'), 2),
+            'items_by_status' => (clone $items)->selectRaw('delivery_status, COUNT(*) as count')
+                ->groupBy('delivery_status')->pluck('count', 'delivery_status'),
+        ];
+    }
+
+    /**
      * Mark manifest item as delivered
      */
     public function markItemDelivered(ShippingManifestItem $item, $signature = null): void

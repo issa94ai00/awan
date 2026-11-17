@@ -207,6 +207,8 @@ const submitRequest = async () => {
         const res = await axios.post('/api/v1/purchase-requests', payload);
         if (res.data?.success) {
             success.value = true;
+            // A guest looks orders up with phone + an order number of theirs.
+            try { localStorage.setItem('last_order_number', res.data.data.order_number); } catch (e) { /* storage blocked: they still see it on screen */ }
             // Save client info to local storage
             localStorage.setItem('customer_info', JSON.stringify({
                 name: form.name,

@@ -9,6 +9,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use App\Support\TrustedEmployee;
 
 class SubscribeController extends Controller
 {
@@ -29,6 +30,9 @@ class SubscribeController extends Controller
             'employee_id.exists' => 'موظف المبيعات غير موجود',
         ]);
 
+        // Only a rep signed in to the app may credit the subscriber to a rep.
+        $employeeId = TrustedEmployee::resolve($validated['employee_id'] ?? null);
+
         // Save or update subscriber
         $subscriber = Subscriber::where('phone', $validated['phone'])->first();
         if (!$subscriber && !empty($validated['email'])) {
@@ -41,7 +45,7 @@ class SubscribeController extends Controller
                 'email' => $validated['email'] ?? $subscriber->email,
                 'phone' => $validated['phone'],
                 'is_active' => true,
-                'employee_id' => $validated['employee_id'] ?? $subscriber->employee_id,
+                'employee_id' => $employeeId ?? $subscriber->employee_id,
             ]);
         } else {
             $subscriber = Subscriber::create([
@@ -49,7 +53,7 @@ class SubscribeController extends Controller
                 'email' => $validated['email'] ?? null,
                 'phone' => $validated['phone'],
                 'is_active' => true,
-                'employee_id' => $validated['employee_id'] ?? null,
+                'employee_id' => $employeeId,
             ]);
         }
 
@@ -63,31 +67,31 @@ class SubscribeController extends Controller
                 $customer = Customer::where('email', $validated['email'])->first();
             }
 
+            if ($customer) {
+                // An existing customer is never re-keyed from here. Setting a
+                // new password for whoever typed a known phone number, and
+                // handing back a login token, let anyone take over that
+                // customer's account. They sign in, or reset their password.
+                return response()->json([
+                    'success' => false,
+                    'message' => 'هذا الرقم مرتبط بحساب موجود. سجّل الدخول أو استعد كلمة المرور.',
+                    'data' => ['account_exists' => true],
+                ], 409);
+            }
+
             $token = Str::random(80);
 
-            if ($customer) {
-                $customer->update([
-                    'name' => $validated['name'],
-                    'phone' => $validated['phone'],
-                    'email' => $validated['email'] ?? $customer->email,
-                    'address' => $validated['address'] ?? $customer->address,
-                    'password' => Hash::make($validated['password']),
-                    'auth_token' => $token,
-                    'employee_id' => $validated['employee_id'] ?? $customer->employee_id,
-                ]);
-            } else {
-                $customer = Customer::create([
-                    'name' => $validated['name'],
-                    'phone' => $validated['phone'],
-                    'email' => $validated['email'] ?? null,
-                    'address' => $validated['address'] ?? null,
-                    'password' => Hash::make($validated['password']),
-                    'auth_token' => $token,
-                    'source' => 'subscriber',
-                    'status' => 'active',
-                    'employee_id' => $validated['employee_id'] ?? null,
-                ]);
-            }
+            $customer = Customer::create([
+                'name' => $validated['name'],
+                'phone' => $validated['phone'],
+                'email' => $validated['email'] ?? null,
+                'address' => $validated['address'] ?? null,
+                'password' => Hash::make($validated['password']),
+                'auth_token' => $token,
+                'source' => 'subscriber',
+                'status' => 'active',
+                'employee_id' => $employeeId,
+            ]);
         }
 
         $response = [

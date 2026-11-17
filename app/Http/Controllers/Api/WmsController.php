@@ -363,81 +363,93 @@ class WmsController extends Controller
             'notes' => 'nullable|string',
         ]);
 
-        $assignment = ProductWarehouseAssignment::findOrFail($id);
+        // Several writes (assignment, inventory cost basis, stock movement):
+        // all or none.
+        $assignment = DB::transaction(function () use ($request, $id) {
+            $assignment = ProductWarehouseAssignment::findOrFail($id);
 
-        // Update assignment
-        $assignment->update([
-            'min_stock_level' => $request->min_stock_level ?? $assignment->min_stock_level,
-            'max_stock_level' => $request->max_stock_level ?? $assignment->max_stock_level,
-            'safety_stock' => $request->safety_stock ?? $assignment->safety_stock,
-            'primary_bin_id' => $request->primary_bin_id,
-            'replenishment_method' => $request->replenishment_method ?? $assignment->replenishment_method,
-            'planning_method' => $request->planning_method ?? $assignment->planning_method,
-            'lead_time_days' => $request->lead_time_days ?? $assignment->lead_time_days,
-            'supplier_id' => $request->supplier_id,
-            'is_active' => $request->is_active ?? $assignment->is_active,
-            'auto_reorder_enabled' => $request->auto_reorder_enabled ?? $assignment->auto_reorder_enabled,
-            'putaway_strategy' => $request->putaway_strategy ?? $assignment->putaway_strategy,
-            'notes' => $request->notes,
-        ]);
+            // Update assignment
+            $assignment->update([
+                'min_stock_level' => $request->min_stock_level ?? $assignment->min_stock_level,
+                'max_stock_level' => $request->max_stock_level ?? $assignment->max_stock_level,
+                'safety_stock' => $request->safety_stock ?? $assignment->safety_stock,
+                'primary_bin_id' => $request->primary_bin_id,
+                'replenishment_method' => $request->replenishment_method ?? $assignment->replenishment_method,
+                'planning_method' => $request->planning_method ?? $assignment->planning_method,
+                'lead_time_days' => $request->lead_time_days ?? $assignment->lead_time_days,
+                'supplier_id' => $request->supplier_id,
+                'is_active' => $request->is_active ?? $assignment->is_active,
+                'auto_reorder_enabled' => $request->auto_reorder_enabled ?? $assignment->auto_reorder_enabled,
+                'putaway_strategy' => $request->putaway_strategy ?? $assignment->putaway_strategy,
+                'notes' => $request->notes,
+            ]);
 
-        if ($request->filled('cost_basis')) {
-            $assignment->cost_basis = $request->cost_basis;
-            $assignment->save();
+            if ($request->filled('cost_basis')) {
+                $assignment->cost_basis = $request->cost_basis;
+                $assignment->save();
 
-            WarehouseInventory::where('product_id', $assignment->product_id)
-                ->where('warehouse_id', $assignment->warehouse_id)
-                ->update(['cost_basis' => $request->cost_basis]);
-        }
-
-        // Update inventory if quantity provided
-        //
-        // The number on the form is a count of what is actually on the shelf, so
-        // it is booked as an adjustment: the difference is applied to the
-        // warehouse row through InventoryService (which also writes the movement
-        // and keeps products.stock_quantity in step), keyed per assignment so a
-        // resubmit cannot move stock twice.
-        if ($request->filled('quantity')) {
-            $inventory = app(InventoryService::class);
-            $warehouseRow = WarehouseInventory::where('product_id', $assignment->product_id)
-                ->where('warehouse_id', $assignment->warehouse_id)
-                ->first();
-
-            $newQuantity = (int) $request->quantity;
-            $difference = $newQuantity - (int) ($warehouseRow?->quantity ?? 0);
-
-            if ($warehouseRow && $difference !== 0) {
-                $inventory->adjust($assignment->product_id, $difference, $assignment->warehouse_id, [
-                    'key' => 'assign:'.$assignment->id,
-                    'source' => 'assignment',
-                    'reference' => $assignment->id,
-                    'reason' => 'تحديث رصيد التعيين من شاشة المخزون',
-                    'allow_negative' => true,
-                    'created_by' => auth()->id(),
-                ]);
-
-                $warehouseRow->refresh();
+                WarehouseInventory::where('product_id', $assignment->product_id)
+                    ->where('warehouse_id', $assignment->warehouse_id)
+                    ->update(['cost_basis' => $request->cost_basis]);
             }
 
-            // `cost_price` submitted here used to be written into
-            // `warehouse_inventory.cost_basis` — that column is the
-            // FIFO/FEFO/LIFO costing-method enum, not a price, so that write
-            // silently corrupted the row's costing strategy and never fed
-            // real costing (InventoryCostingService reads from
-            // inventory_cost_layers). Removed rather than replaced: this
-            // screen has no per-warehouse cost override today.
+            // Update inventory if quantity provided
+            //
+            // The number on the form is a count of what is actually on the shelf, so
+            // it is booked as an adjustment: the difference is applied to the
+            // warehouse row through InventoryService (which also writes the movement
+            // and keeps products.stock_quantity in step), keyed per assignment so a
+            // resubmit cannot move stock twice.
+            if ($request->filled('quantity')) {
+                $inventory = app(InventoryService::class);
+                $warehouseRow = WarehouseInventory::where('product_id', $assignment->product_id)
+                    ->where('warehouse_id', $assignment->warehouse_id)
+                    ->first();
 
-            if (! $warehouseRow && $newQuantity > 0) {
-                $inventory->receive($assignment->product_id, $newQuantity, $assignment->warehouse_id, [
-                    'key' => 'assign:'.$assignment->id.':opening',
-                    'source' => 'assignment',
-                    'reference' => $assignment->id,
-                    'reason' => 'رصيد افتتاحي للتعيين',
-                    'unit_cost' => $request->cost_price ?? 0,
-                    'created_by' => auth()->id(),
-                ]);
+                $newQuantity = (int) $request->quantity;
+                $difference = $newQuantity - (int) ($warehouseRow?->quantity ?? 0);
+
+                if ($warehouseRow && $difference !== 0) {
+                    $inventory->adjust($assignment->product_id, $difference, $assignment->warehouse_id, [
+                        // Keyed on the state it corrects (the last movement and the
+                        // new count): a resubmit of the same form is still a
+                        // no-op, but a later recount is a new adjustment. A
+                        // fixed 'assign:{id}' key made every recount after the
+                        // first a silent no-op.
+                        'key' => 'assign:'.$assignment->id.':after:'.(int) StockMovement::where('product_id', $assignment->product_id)
+                            ->where('warehouse_id', $assignment->warehouse_id)->max('id').':to:'.$newQuantity,
+                        'source' => 'assignment',
+                        'reference' => $assignment->id,
+                        'reason' => 'تحديث رصيد التعيين من شاشة المخزون',
+                        'allow_negative' => true,
+                        'created_by' => auth()->id(),
+                    ]);
+
+                    $warehouseRow->refresh();
+                }
+
+                // `cost_price` submitted here used to be written into
+                // `warehouse_inventory.cost_basis` — that column is the
+                // FIFO/FEFO/LIFO costing-method enum, not a price, so that write
+                // silently corrupted the row's costing strategy and never fed
+                // real costing (InventoryCostingService reads from
+                // inventory_cost_layers). Removed rather than replaced: this
+                // screen has no per-warehouse cost override today.
+
+                if (! $warehouseRow && $newQuantity > 0) {
+                    $inventory->receive($assignment->product_id, $newQuantity, $assignment->warehouse_id, [
+                        'key' => 'assign:'.$assignment->id.':opening',
+                        'source' => 'assignment',
+                        'reference' => $assignment->id,
+                        'reason' => 'رصيد افتتاحي للتعيين',
+                        'unit_cost' => $request->cost_price ?? 0,
+                        'created_by' => auth()->id(),
+                    ]);
+                }
             }
-        }
+
+            return $assignment;
+        });
 
         return response()->json([
             'message' => 'تم تحديث التعيين بنجاح',
@@ -1407,7 +1419,7 @@ class WmsController extends Controller
 
     public function indexShippingManifests(Request $request)
     {
-        $query = ShippingManifest::with(['warehouse', 'carrier', 'driver', 'items.salesOrder']);
+        $query = ShippingManifest::with(['warehouse', 'driver', 'items.salesOrder']);
 
         if ($request->warehouse_id) {
             $query->byWarehouse($request->warehouse_id);
@@ -1426,7 +1438,7 @@ class WmsController extends Controller
 
     public function showShippingManifest($id)
     {
-        $manifest = ShippingManifest::with(['warehouse', 'carrier', 'driver', 'items.salesOrder', 'items.packingList'])
+        $manifest = ShippingManifest::with(['warehouse', 'driver', 'items.salesOrder', 'items.packingList'])
             ->findOrFail($id);
 
         return response()->json($manifest);
@@ -1437,7 +1449,7 @@ class WmsController extends Controller
         $validated = $request->validate([
             'packing_list_ids' => 'required|array',
             'packing_list_ids.*' => 'exists:packing_lists,id',
-            'carrier_id' => 'nullable|exists:carriers,id',
+            'carrier_id' => 'nullable|integer',
             'carrier_name' => 'nullable|string',
         ]);
 
@@ -1465,6 +1477,28 @@ class WmsController extends Controller
         } catch (\Exception $e) {
             return response()->json(['message' => $e->getMessage()], 400);
         }
+    }
+
+    public function completeManifest($id)
+    {
+        $manifest = ShippingManifest::findOrFail($id);
+
+        try {
+            $this->packingService->completeManifest($manifest);
+
+            return response()->json(['message' => 'Manifest completed']);
+        } catch (\Exception $e) {
+            return response()->json(['message' => $e->getMessage()], 400);
+        }
+    }
+
+    public function getShippingStatistics(Request $request)
+    {
+        return response()->json($this->packingService->getShippingStatistics(
+            $request->warehouse_id,
+            $request->from_date ? now()->parse($request->from_date) : null,
+            $request->to_date ? now()->parse($request->to_date) : null
+        ));
     }
 
     public function markItemDelivered(Request $request, $itemId)

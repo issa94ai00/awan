@@ -19,6 +19,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
+use App\Support\TrustedEmployee;
 
 class PurchaseRequestController extends Controller
 {
@@ -34,8 +35,9 @@ class PurchaseRequestController extends Controller
             'email' => 'nullable|email|max:255',
             'address' => 'nullable|string|max:1000',
             'notes' => 'nullable|string|max:2000',
-            // The rep who raised the order from the mobile app. Optional: a
-            // walk-in shopper checking out on their own sends no employee.
+            // The rep who raised the order from the mobile app. Honoured only
+            // with that rep's login token (see TrustedEmployee); a shopper
+            // checking out on their own sends none.
             'employee_id' => 'nullable|integer|exists:employees,id',
             'items' => 'nullable|array',
             'items.*.product_id' => 'nullable|integer|exists:products,id',
@@ -66,13 +68,23 @@ class PurchaseRequestController extends Controller
             $customer = Customer::where('email', $validated['email'])->first();
         }
 
-        if ($customer) {
+        $staff = TrustedEmployee::staff();
+
+        if ($customer && $staff) {
             $customer->update([
                 'name' => $validated['name'],
                 'phone' => $validated['phone'],
                 'email' => $validated['email'] ?? $customer->email,
                 'address' => $validated['address'] ?? $customer->address,
             ]);
+        } elseif ($customer) {
+            // A guest who types an existing customer's phone number must not
+            // be able to rename that customer or move their address: only
+            // what is still missing is filled in.
+            $customer->update(array_filter([
+                'email' => $customer->email ? null : ($validated['email'] ?? null),
+                'address' => $customer->address ? null : ($validated['address'] ?? null),
+            ]));
         } else {
             $customer = Customer::create([
                 'name' => $validated['name'],
@@ -88,7 +100,7 @@ class PurchaseRequestController extends Controller
         // customer: the order used to arrive with nobody named on it, so it
         // never showed up under anyone's work and the customer stayed
         // unassigned no matter how many orders that rep placed for them.
-        $employeeId = $validated['employee_id'] ?? null;
+        $employeeId = TrustedEmployee::resolve($validated['employee_id'] ?? null);
         if ($employeeId !== null) {
             $customer->assignEmployee($employeeId);
         }
@@ -161,7 +173,7 @@ class PurchaseRequestController extends Controller
             'total' => $subtotal,
             'shipping_address' => $validated['address'] ?? null,
             'notes' => $validated['notes'] ?? null,
-            'created_by' => null,
+            'created_by' => $staff?->id,
             'assigned_employee_id' => $employeeId,
         ]);
 
@@ -194,18 +206,38 @@ class PurchaseRequestController extends Controller
         ], 201);
     }
 
+    /**
+     * A customer's orders, for the storefront "my orders" page.
+     *
+     * A signed-in customer (storefront bearer token) gets their own orders.
+     * A guest must give the phone number AND one of that customer's order
+     * numbers (shown at checkout): the phone alone used to list anyone's
+     * orders, items and totals to whoever knew or guessed the number.
+     */
     public function orders(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'phone' => 'required|string|max:20',
-        ]);
-
-        $customer = Customer::where('phone', $validated['phone'])->first();
+        $token = $request->bearerToken();
+        $customer = $token ? Customer::where('auth_token', $token)->first() : null;
 
         if (! $customer) {
+            $validated = $request->validate([
+                'phone' => 'required|string|max:20',
+                'order_number' => 'required|string|max:50',
+            ], [
+                'order_number.required' => 'أدخل رقم أحد طلباتك للتحقق.',
+            ]);
+
+            $customer = Customer::where('phone', $validated['phone'])
+                ->whereHas('salesOrders', fn ($q) => $q->where('order_number', trim($validated['order_number'])))
+                ->first();
+        }
+
+        if (! $customer) {
+            // One answer for "no such phone" and "wrong order number", so the
+            // endpoint cannot be used to learn which numbers are customers.
             return response()->json([
                 'success' => false,
-                'message' => 'لا يوجد عميل بهذا الرقم',
+                'message' => 'لا توجد طلبات مطابقة لرقم الهاتف ورقم الطلب.',
                 'data' => null,
             ], 404);
         }

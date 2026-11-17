@@ -127,6 +127,10 @@ Route::prefix('v1')->middleware('web')->group(function () {
         Route::post('/flutter/cart/clear', [FlutterCartController::class, 'clear'])->name('api.flutter.cart.clear');
     });
 
+    // Database documentation (schema, routes, security findings): admins only.
+    Route::middleware(['auth:sanctum', 'admin'])->get('/admin/erd-link', [\App\Http\Controllers\ErdController::class, 'link'])
+        ->name('api.admin.erd.link');
+
     // Staff Customer API (Token-based for staff to manage their customers)
     Route::middleware('auth:sanctum')->prefix('staff/customers')->group(function () {
         Route::get('/', [StaffCustomerController::class, 'index'])->name('api.staff.customers.index');
@@ -227,7 +231,7 @@ Route::prefix('v1')->middleware('web')->group(function () {
 
     // Purchase Requests (public)
     Route::post('/purchase-requests', [PurchaseRequestController::class, 'store'])->name('api.purchase-requests.store');
-    Route::get('/purchase-requests/orders', [PurchaseRequestController::class, 'orders'])->name('api.purchase-requests.orders');
+    Route::get('/purchase-requests/orders', [PurchaseRequestController::class, 'orders'])->middleware('throttle:20,1')->name('api.purchase-requests.orders');
 
     // Customer Auth (public)
     Route::post('/customer/auth/register', [CustomerAuthController::class, 'register'])->name('api.customer.auth.register');

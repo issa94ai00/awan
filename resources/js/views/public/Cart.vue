@@ -347,6 +347,8 @@ const submitPurchaseRequest = async () => {
         const res = await axios.post('/api/v1/purchase-requests', payload);
         if (res.data?.success) {
             purchaseState.successMsg = `رقم الطلب: ${res.data.data.order_number}`;
+            // A guest looks orders up with phone + an order number of theirs.
+            try { localStorage.setItem('last_order_number', res.data.data.order_number); } catch (e) { /* storage blocked: they still see it on screen */ }
             
             // If they are not logged in but successfully ordered, we save their info in localStorage so it persists
             if (!customerAuth.isAuthenticated) {

@@ -48,6 +48,9 @@
                             <el-button type="default" :icon="Printer" @click="printGuide">
                                 طباعة الدليل / PDF
                             </el-button>
+                            <el-button v-if="isAdmin" type="default" :icon="DataAnalysis" :loading="erdOpening" @click="openErd">
+                                مخطط قاعدة البيانات وفحص الكود
+                            </el-button>
                         </el-button-group>
                     </div>
                 </div>
@@ -1117,6 +1120,8 @@
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { ElMessage } from 'element-plus';
+import api from '@/api';
+import { useAuthStore } from '@/stores/auth';
 import {
     Reading, Search, Fold, Expand, Printer, Menu, Top, Monitor, Check,
     WarningFilled, InfoFilled, ArrowLeft, ArrowDown, Cpu, Connection, Coin,
@@ -1127,6 +1132,26 @@ import {
 } from '@element-plus/icons-vue';
 
 const { t } = useI18n();
+
+// The database documentation (schema, routes, security findings) is admin-only:
+// the API hands out a short-lived signed link and it opens in a new tab.
+const authStore = useAuthStore();
+const isAdmin = computed(() => Boolean(authStore.isSuperAdmin || authStore.user?.is_admin));
+const erdOpening = ref(false);
+const openErd = async () => {
+    const tab = window.open('', '_blank');
+    erdOpening.value = true;
+    try {
+        const { data } = await api.get('/admin/erd-link');
+        if (tab) tab.location.href = data.url;
+        else window.location.href = data.url;
+    } catch (e) {
+        tab?.close();
+        ElMessage.error(e.response?.data?.message || 'تعذّر فتح مخطط قاعدة البيانات');
+    } finally {
+        erdOpening.value = false;
+    }
+};
 
 // Reactive State
 const activeViewTab = ref('modules');

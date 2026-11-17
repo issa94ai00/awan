@@ -200,7 +200,8 @@ class ResetSalesAndPurchases extends Command
                 try {
                     DB::statement("ALTER TABLE `{$table}` AUTO_INCREMENT = 1");
                 } catch (\Throwable $e) {
-                    // ignore if table doesn't support auto-increment reset
+                    // Not every table has an auto-increment to reset; say so and go on.
+                    $this->warn("لم يُصفَّر عدّاد {$table}: ".$e->getMessage());
                 }
             }
         }

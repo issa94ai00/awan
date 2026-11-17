@@ -34,6 +34,11 @@
                                 <label for="lookupPhone">{{ t('phone_label') || 'رقم الهاتف' }} <span style="color: #dc3545;">*</span></label>
                                 <input type="tel" id="lookupPhone" v-model="phoneInput" required>
                             </div>
+                            <div class="form-group">
+                                <label for="lookupOrderNumber">{{ t('order_number') || 'رقم الطلب' }} <span style="color: #dc3545;">*</span></label>
+                                <input type="text" id="lookupOrderNumber" v-model="orderNumberInput" required placeholder="SO-000123">
+                                <small style="color:#6c757d;">رقم أي طلب سابق لك، يظهر عند إتمام الطلب. للتحقق من أن الطلبات لك.</small>
+                            </div>
                             <button type="submit" class="btn-submit" :disabled="loading">
                                 <i class="fas" :class="loading ? 'fa-spinner fa-spin' : 'fa-search'"></i>
                                 {{ t('view_my_orders') || 'عرض طلباتي' }}
@@ -176,6 +181,7 @@ const { t } = useI18n();
 
 // State
 const phoneInput = ref('');
+const orderNumberInput = ref('');
 const loading = ref(false);
 const customerData = ref(null);
 const errorMsg = ref('');
@@ -215,11 +221,17 @@ const triggerHeaderLogin = () => {
     window.dispatchEvent(new CustomEvent('trigger-customer-login-modal'));
 };
 
-const lookupOrders = async (phone) => {
+// Signed in: the customer's own orders, by their token. Guest: phone plus one
+// of their order numbers, so a phone number alone shows nobody's orders.
+const lookupOrders = async (phone, orderNumber = '') => {
     loading.value = true;
     errorMsg.value = '';
     try {
-        const res = await axios.get('/api/v1/purchase-requests/orders?phone=' + encodeURIComponent(phone));
+        const token = customerAuth.isAuthenticated ? localStorage.getItem('customer_token') : null;
+        const res = await axios.get('/api/v1/purchase-requests/orders', {
+            params: token ? {} : { phone, order_number: orderNumber },
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
         if (res.data?.success && res.data.data) {
             customerData.value = res.data.data;
         } else {
@@ -237,19 +249,21 @@ const lookupOrders = async (phone) => {
 
 const handleLookup = () => {
     const phone = phoneInput.value.trim();
-    if (!phone) return;
-    lookupOrders(phone);
+    const orderNumber = orderNumberInput.value.trim();
+    if (!phone || !orderNumber) return;
+    lookupOrders(phone, orderNumber);
 };
 
 const refreshLookup = () => {
     if (customerData.value?.customer?.phone) {
-        lookupOrders(customerData.value.customer.phone);
+        lookupOrders(customerData.value.customer.phone, orderNumberInput.value.trim());
     }
 };
 
 const handleClearLookup = () => {
     customerData.value = null;
     phoneInput.value = '';
+    orderNumberInput.value = '';
     errorMsg.value = '';
 };
 
@@ -265,9 +279,11 @@ const initProfile = () => {
             const stored = localStorage.getItem('customer_info');
             if (stored) {
                 const info = JSON.parse(stored);
+                const lastOrder = localStorage.getItem('last_order_number') || '';
                 if (info && info.phone) {
                     phoneInput.value = info.phone;
-                    lookupOrders(info.phone);
+                    orderNumberInput.value = lastOrder;
+                    if (lastOrder) lookupOrders(info.phone, lastOrder);
                 }
             }
         } catch (e) {
