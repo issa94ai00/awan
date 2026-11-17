@@ -146,6 +146,9 @@ class GoodsIssueService
                 // negative here would hide exactly the problem that check
                 // exists to surface.
                 'allow_negative' => false,
+                // Draw this variant's cost layers, not whichever variant's
+                // units are oldest (a piece costed at a box's price).
+                'cost_variant_id' => $line['product_variant_id'] ?? null,
             ];
 
             $movement = $consumeReserved
@@ -259,6 +262,7 @@ class GoodsIssueService
                     'reason' => $reason ?: $label,
                     'unit_cost' => $unitCost,
                     'received_at' => $line['received_at'] ?? null,
+                    'cost_variant_id' => $line['product_variant_id'] ?? null,
                 ]
             );
 

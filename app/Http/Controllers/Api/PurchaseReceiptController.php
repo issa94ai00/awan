@@ -253,6 +253,9 @@ class PurchaseReceiptController extends Controller
                             'source' => 'purchase_receipt',
                             'reason' => 'استلام من أمر شراء',
                             'unit_cost' => $netUnitCost,
+                            // The layer belongs to the size received: a box and a
+                            // piece of one product cost very different amounts.
+                            'cost_variant_id' => $variant?->id,
                             'created_by' => auth()->id(),
                             // A purchase is real money paid, so it should move the
                             // product's reference cost — a weighted average with

@@ -276,12 +276,22 @@ class InventoryService
             $unitCost = (float) ($options['unit_cost'] ?? 0);
             $costedTotal = null;
 
+            // Which variant's cost layers this movement draws from or opens.
+            // Deliberately a separate option from $productVariantId: that one
+            // also picks the warehouse_inventory row, and balances are kept
+            // per product — passing a variant there would open a new row and
+            // split the balance. Costing is the only thing that needs it.
+            $costVariantId = isset($options['cost_variant_id']) && $options['cost_variant_id']
+                ? (int) $options['cost_variant_id']
+                : null;
+
             if ($signedQuantity < 0) {
-                $consumed = $costing->consume($productId, $warehouseId, abs($signedQuantity));
+                $consumed = $costing->consume($productId, $warehouseId, abs($signedQuantity), null, $costVariantId);
                 $unitCost = $consumed['unit_cost'];
                 $costedTotal = $consumed['cost'];
             } else {
                 $costing->addLayer($productId, $warehouseId, $signedQuantity, $unitCost, [
+                    'product_variant_id' => $costVariantId,
                     'source' => $options['source'] ?? null,
                     'reference' => $options['reference'] ?? null,
                     // Goods coming back belong where they were in the queue,

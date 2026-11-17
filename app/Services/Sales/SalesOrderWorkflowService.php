@@ -463,6 +463,7 @@ class SalesOrderWorkflowService
 
                 $lines[] = [
                     'product_id' => (int) $item->product_id,
+                    'product_variant_id' => $item->product_variant_id ? (int) $item->product_variant_id : null,
                     'quantity' => (int) $quantity,
                     'warehouse_id' => (int) $sourceWarehouseId,
                     'unit_cost' => (float) ($item->product->cost_price ?? 0),
@@ -1410,6 +1411,7 @@ class SalesOrderWorkflowService
                             'source' => $order->id,
                             'reason' => 'إرجاع مخزون لإلغاء طلب بيع رقم '.$order->order_number,
                             'unit_cost' => (float) ($item->product?->cost_price ?? 0),
+                            'cost_variant_id' => $item->product_variant_id,
                         ]
                     );
 
@@ -1511,6 +1513,7 @@ class SalesOrderWorkflowService
                         'source' => $order->id,
                         'reason' => 'إرجاع مخزون لتعديل بنود طلب بيع رقم '.$order->order_number,
                         'unit_cost' => (float) ($item->product?->cost_price ?? 0),
+                        'cost_variant_id' => $item->product_variant_id,
                     ]);
                     ProductVariant::adjustStockCount($item->product_variant_id, (int) $quantity);
                 }

@@ -182,6 +182,8 @@ class ReplenishmentWorkflowService
                                 . ' - ' . $transfer->transfer_number,
                             'unit_cost' => (float) $item->unit_cost,
                             'created_by' => $userId,
+                            // The destination layer keeps the size it left as.
+                            'cost_variant_id' => $item->product_variant_id,
                         ]
                     );
 
@@ -310,6 +312,7 @@ class ReplenishmentWorkflowService
                     'source' => 'transfer',
                     'reason' => 'إخراج مخزون لطلب تزويد ' . $transfer->transfer_number,
                     'unit_cost' => (float) $item->unit_cost,
+                    'cost_variant_id' => $item->product_variant_id,
                 ]
             );
         } catch (\Throwable $e) {

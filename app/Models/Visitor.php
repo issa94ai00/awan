@@ -3,11 +3,16 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\MassPrunable;
 use Illuminate\Database\Eloquent\Model;
 
 class Visitor extends Model
 {
-    use HasFactory;
+    use HasFactory, MassPrunable;
+
+    /** Bot hits are kept this long; human visits are never pruned. */
+    public const BOT_RETENTION_DAYS = 30;
 
     protected $fillable = [
         'ip_address',
@@ -27,6 +32,17 @@ class Visitor extends Model
         'visited_at' => 'datetime',
         'is_bot' => 'boolean',
     ];
+
+    /**
+     * Bot rows are ~90% of this table and only feed the "bot visits" figure,
+     * so they are dropped after BOT_RETENTION_DAYS (`model:prune`, scheduled
+     * daily in routes/console.php). Human visits stay for all-time analytics.
+     */
+    public function prunable(): Builder
+    {
+        return static::where('is_bot', true)
+            ->where('visited_at', '<', now()->subDays(self::BOT_RETENTION_DAYS));
+    }
 
     /**
      * Get today's visitors count

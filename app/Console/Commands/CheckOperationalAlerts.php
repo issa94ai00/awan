@@ -15,6 +15,12 @@ class CheckOperationalAlerts extends Command
 
     protected $description = 'Scan operational ERP metrics (stock, pending orders, overdue invoices) and dispatch alerts';
 
+    /** A pending sales order older than this has stalled rather than queued. */
+    private const STALE_SALES_ORDER_DAYS = 7;
+
+    /** A purchase order with nothing received after this is overdue. */
+    private const OVERDUE_PURCHASE_DAYS = 14;
+
     protected NotificationService $notificationService;
 
     public function __construct(NotificationService $notificationService)
@@ -101,6 +107,50 @@ class CheckOperationalAlerts extends Command
             "يوجد {$awaitingReceipt} أمر شراء مؤكد بانتظار استلام البضاعة في المستودع.",
             'warehouse',
             ['route' => '/admin/purchases/receipts', 'count' => $awaitingReceipt]
+        );
+
+        // 5. Sales orders left pending for over a week. "Pending" above is a
+        //    queue; these have dropped out of it (forgotten, or waiting on a
+        //    supplier nobody is chasing) and hold no stock and no invoice.
+        $stalePending = SalesOrder::where('status', 'pending')
+            ->where('created_at', '<', now()->subDays(self::STALE_SALES_ORDER_DAYS));
+        $staleCount = (clone $stalePending)->count();
+        $oldest = $staleCount ? (clone $stalePending)->orderBy('created_at')->first(['order_number', 'created_at']) : null;
+        if ($staleCount > 0) {
+            $alertCount++;
+            $this->warn("Sales Orders Alert: {$staleCount} orders pending for over ".self::STALE_SALES_ORDER_DAYS.' days.');
+        }
+        $this->raiseOrResolve(
+            'ops.stale_sales_orders',
+            $staleCount > 0,
+            'طلبات بيع معلّقة منذ أكثر من '.self::STALE_SALES_ORDER_DAYS.' أيام',
+            $oldest
+                ? "يوجد {$staleCount} طلب بيع معلّق منذ أكثر من ".self::STALE_SALES_ORDER_DAYS." أيام، أقدمها {$oldest->order_number} منذ {$oldest->created_at->diffInDays(now())} يوماً. أكّدها أو ألغِها."
+                : '',
+            'order',
+            ['route' => '/admin/sales/sales-orders?status=pending', 'count' => $staleCount]
+        );
+
+        // 6. Purchase orders open past the expected lead time with nothing
+        //    received. A sales order is often waiting on exactly these.
+        $overduePurchases = PurchaseOrder::whereIn('status', ['pending', 'confirmed'])
+            ->where('created_at', '<', now()->subDays(self::OVERDUE_PURCHASE_DAYS))
+            ->whereDoesntHave('receipts');
+        $overduePoCount = (clone $overduePurchases)->count();
+        $blockingSales = (clone $overduePurchases)->whereNotNull('sales_order_id')
+            ->whereHas('salesOrder', fn ($q) => $q->where('status', 'pending'))->count();
+        if ($overduePoCount > 0) {
+            $alertCount++;
+            $this->warn("Purchasing Alert: {$overduePoCount} purchase orders open for over ".self::OVERDUE_PURCHASE_DAYS.' days with nothing received.');
+        }
+        $this->raiseOrResolve(
+            'ops.overdue_purchase_orders',
+            $overduePoCount > 0,
+            'أوامر شراء متأخرة دون استلام',
+            "يوجد {$overduePoCount} أمر شراء مفتوح منذ أكثر من ".self::OVERDUE_PURCHASE_DAYS.' يوماً دون أي استلام'
+                .($blockingSales ? "، منها {$blockingSales} يؤخر طلبات بيع معلّقة" : '').'. تابع المورد أو ألغِ الأمر.',
+            'warehouse',
+            ['route' => '/admin/purchases/orders', 'count' => $overduePoCount, 'blocking_sales_orders' => $blockingSales]
         );
 
         $this->newLine();

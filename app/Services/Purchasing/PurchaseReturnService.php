@@ -93,6 +93,7 @@ class PurchaseReturnService
                         'source' => 'purchase_return',
                         'reference' => $return->return_number,
                         'reason' => 'إرجاع إلى المورّد',
+                        'cost_variant_id' => $variantId,
                     ]
                 );
 

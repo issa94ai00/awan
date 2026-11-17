@@ -721,6 +721,7 @@ class InvoiceController extends Controller
                 $issued = $goods->issueAndPostCost(
                     lines: $invoice->items()->get()->map(fn ($line) => [
                         'product_id' => (int) $line->product_id,
+                        'product_variant_id' => $line->product_variant_id ? (int) $line->product_variant_id : null,
                         'quantity' => $line->baseQuantity(),
                         'warehouse_id' => (int) $line->warehouse_id,
                         'unit_cost' => (float) ($line->product?->cost_price ?? 0),
@@ -1275,6 +1276,7 @@ class InvoiceController extends Controller
 
             $returns[] = [
                 'product_id' => (int) $movement->product_id,
+                'product_variant_id' => $line->product_variant_id ? (int) $line->product_variant_id : null,
                 'quantity' => (int) $movement->quantity,
                 'warehouse_id' => (int) $movement->warehouse_id,
                 'unit_cost' => (float) $movement->unit_cost,
@@ -1304,6 +1306,7 @@ class InvoiceController extends Controller
         $issued = $goods->issueAndPostCost(
             lines: $invoice->items()->get()->map(fn ($line) => [
                 'product_id' => (int) $line->product_id,
+                'product_variant_id' => $line->product_variant_id ? (int) $line->product_variant_id : null,
                 'quantity' => $line->baseQuantity(),
                 'warehouse_id' => (int) $line->warehouse_id,
                 'unit_cost' => (float) ($line->product?->cost_price ?? 0),
@@ -1499,6 +1502,7 @@ class InvoiceController extends Controller
             $goods->returnAndReverseCost(
                 lines: $invoice->items()->with('product')->get()->map(fn ($line) => [
                     'product_id' => (int) $line->product_id,
+                    'product_variant_id' => $line->product_variant_id ? (int) $line->product_variant_id : null,
                     'quantity' => $line->baseQuantity(),
                     'warehouse_id' => (int) $line->warehouse_id,
                     'unit_cost' => (float) ($line->product?->cost_price ?? 0),

@@ -648,6 +648,7 @@ class RmaController extends Controller
                             'reason' => $note,
                             'condition' => $condition,
                             'bin_id' => $binId,
+                            'cost_variant_id' => $variantId,
                             'unit_cost' => $returnCost,
                             'allow_negative' => $delta < 0,
                             'created_by' => auth()->id(),

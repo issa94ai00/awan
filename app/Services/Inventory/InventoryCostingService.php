@@ -43,6 +43,9 @@ class InventoryCostingService
 
         DB::table(self::TABLE)->insert([
             'product_id' => $productId,
+            // Null: not tied to a variant (pre-variant layers, or a caller that
+            // does not know it). Such layers stay drawable by every variant.
+            'product_variant_id' => $options['product_variant_id'] ?? null,
             'warehouse_id' => $warehouseId,
             'received_quantity' => $quantity,
             'remaining_quantity' => $quantity,
@@ -66,7 +69,7 @@ class InventoryCostingService
      *
      * @return array{cost:float,unit_cost:float,layers:array<int,array{layer_id:int,quantity:int,unit_cost:float}>}
      */
-    public function consume(int $productId, int $warehouseId, int $quantity, ?string $method = null): array
+    public function consume(int $productId, int $warehouseId, int $quantity, ?string $method = null, ?int $variantId = null): array
     {
         if ($quantity <= 0) {
             return ['cost' => 0.0, 'unit_cost' => 0.0, 'layers' => []];
@@ -74,22 +77,10 @@ class InventoryCostingService
 
         $effectiveMethod = $method ?: $this->resolveCostMethod($productId, $warehouseId);
 
-        $query = DB::table(self::TABLE)
-            ->where('product_id', $productId)
-            ->where('warehouse_id', $warehouseId)
-            ->where('remaining_quantity', '>', 0);
-
-        if ($effectiveMethod === WarehouseInventory::COST_BASIS_LIFO) {
-            $query->orderByDesc('received_at')->orderByDesc('id');
-        } else {
-            // FIFO, WEIGHTED_AVERAGE, and FEFO (default layer sequence)
-            $query->orderBy('received_at')->orderBy('id');
-        }
-
-        $layers = $query->lockForUpdate()->get();
+        $layers = $this->drawableLayers($productId, $warehouseId, $variantId, $effectiveMethod);
 
         if ($effectiveMethod === WarehouseInventory::COST_BASIS_WEIGHTED_AVERAGE) {
-            return $this->consumeWeightedAverage($productId, $warehouseId, $quantity, $layers);
+            return $this->consumeWeightedAverage($productId, $warehouseId, $quantity, $layers, $variantId);
         }
 
         $remaining = $quantity;
@@ -125,7 +116,7 @@ class InventoryCostingService
         // cost. The product's cost price is the only figure left to value it
         // at, and using it keeps the shipment costed rather than free.
         if ($remaining > 0) {
-            $fallback = (float) (Product::whereKey($productId)->value('cost_price') ?? 0);
+            $fallback = $this->fallbackCost($productId, $variantId);
             $cost += $remaining * $fallback;
             $consumed[] = [
                 'layer_id' => 0,
@@ -146,12 +137,12 @@ class InventoryCostingService
     /**
      * Consumes units using the moving weighted average cost of remaining stock.
      */
-    private function consumeWeightedAverage(int $productId, int $warehouseId, int $quantity, $layers): array
+    private function consumeWeightedAverage(int $productId, int $warehouseId, int $quantity, $layers, ?int $variantId = null): array
     {
         $totalLayerQty = (int) $layers->sum('remaining_quantity');
         $totalLayerCost = (float) $layers->sum(fn ($l) => (int) $l->remaining_quantity * (float) $l->unit_cost);
 
-        $fallback = (float) (Product::whereKey($productId)->value('cost_price') ?? 0);
+        $fallback = $this->fallbackCost($productId, $variantId);
         $avgUnitCost = $totalLayerQty > 0 ? round($totalLayerCost / $totalLayerQty, 5) : $fallback;
 
         $remaining = $quantity;
@@ -183,10 +174,13 @@ class InventoryCostingService
             $remaining -= $take;
         }
 
-        // Align remaining open layers to the weighted average unit cost
+        // Align remaining open layers to the weighted average unit cost. With a
+        // variant, only that variant's own layers: shared (null) layers are
+        // drawn by every variant and must not take one variant's average.
         DB::table(self::TABLE)
             ->where('product_id', $productId)
             ->where('warehouse_id', $warehouseId)
+            ->when($variantId !== null, fn ($q) => $q->where('product_variant_id', $variantId))
             ->where('remaining_quantity', '>', 0)
             ->update([
                 'unit_cost' => $avgUnitCost,
@@ -209,6 +203,57 @@ class InventoryCostingService
             'unit_cost' => $quantity > 0 ? round($cost / $quantity, 5) : 0.0,
             'layers' => $consumed,
         ];
+    }
+
+    /**
+     * The layers an issue may draw from, locked, in the order they are drawn.
+     *
+     * Without a variant: every open layer of the product in the warehouse — the
+     * behaviour before variants were tracked.
+     *
+     * With a variant: that variant's own layers first, then the shared layers
+     * (product_variant_id null: stock from before variant tracking, or written
+     * by a caller that did not know the variant). Another variant's layers are
+     * never drawn — that is what costed a single piece at the price of a box.
+     */
+    private function drawableLayers(int $productId, int $warehouseId, ?int $variantId, string $method)
+    {
+        $base = fn () => DB::table(self::TABLE)
+            ->where('product_id', $productId)
+            ->where('warehouse_id', $warehouseId)
+            ->where('remaining_quantity', '>', 0)
+            ->when(
+                $method === WarehouseInventory::COST_BASIS_LIFO,
+                fn ($q) => $q->orderByDesc('received_at')->orderByDesc('id'),
+                // FIFO, WEIGHTED_AVERAGE, and FEFO (default layer sequence)
+                fn ($q) => $q->orderBy('received_at')->orderBy('id')
+            );
+
+        if ($variantId === null) {
+            return $base()->lockForUpdate()->get();
+        }
+
+        $own = $base()->where('product_variant_id', $variantId)->lockForUpdate()->get();
+        $shared = $base()->whereNull('product_variant_id')->lockForUpdate()->get();
+
+        return $own->concat($shared)->values();
+    }
+
+    /**
+     * What to cost units at when the layers run out: the variant's own cost
+     * when it has one (a box and a piece of the same product cost very
+     * different amounts), otherwise the product's.
+     */
+    private function fallbackCost(int $productId, ?int $variantId): float
+    {
+        if ($variantId !== null) {
+            $variantCost = (float) (DB::table('product_variants')->where('id', $variantId)->value('cost_price') ?? 0);
+            if ($variantCost > 0) {
+                return $variantCost;
+            }
+        }
+
+        return (float) (Product::whereKey($productId)->value('cost_price') ?? 0);
     }
 
     /**
@@ -346,28 +391,33 @@ class InventoryCostingService
             $query->where('warehouse_id', $warehouseId);
         }
 
+        // Averaged per variant (null being its own group): a box and a piece
+        // of the same product must not be blended into one unit cost.
         $pairs = $query
-            ->select('product_id', 'warehouse_id')
+            ->select('product_id', 'warehouse_id', 'product_variant_id')
             ->distinct()
             ->get();
 
         $updatedCount = 0;
         foreach ($pairs as $pair) {
-            $layers = DB::table(self::TABLE)
+            $scope = fn () => DB::table(self::TABLE)
                 ->where('product_id', $pair->product_id)
                 ->where('warehouse_id', $pair->warehouse_id)
-                ->where('remaining_quantity', '>', 0)
-                ->get();
+                ->when(
+                    $pair->product_variant_id === null,
+                    fn ($q) => $q->whereNull('product_variant_id'),
+                    fn ($q) => $q->where('product_variant_id', $pair->product_variant_id)
+                )
+                ->where('remaining_quantity', '>', 0);
+
+            $layers = $scope()->get();
 
             $totalQty = (int) $layers->sum('remaining_quantity');
             $totalCost = (float) $layers->sum(fn ($l) => (int) $l->remaining_quantity * (float) $l->unit_cost);
 
             if ($totalQty > 0) {
                 $avgCost = round($totalCost / $totalQty, 5);
-                DB::table(self::TABLE)
-                    ->where('product_id', $pair->product_id)
-                    ->where('warehouse_id', $pair->warehouse_id)
-                    ->where('remaining_quantity', '>', 0)
+                $scope()
                     ->update([
                         'unit_cost' => $avgCost,
                         'updated_at' => now(),
@@ -385,11 +435,12 @@ class InventoryCostingService
      * A return must come back in at what it went out at, not at today's price —
      * otherwise cancelling a sale quietly changes what the inventory is worth.
      */
-    public function returnLayer(int $productId, int $warehouseId, int $quantity, float $unitCost): void
+    public function returnLayer(int $productId, int $warehouseId, int $quantity, float $unitCost, ?int $variantId = null): void
     {
         $this->addLayer($productId, $warehouseId, $quantity, $unitCost, [
             'source' => 'return',
             'reference' => 'إرجاع بضاعة',
+            'product_variant_id' => $variantId,
         ]);
     }
 

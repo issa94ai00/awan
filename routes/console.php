@@ -57,6 +57,17 @@ Schedule::command('commissions:purge-trashed')
     ->dailyAt('02:15')
     ->withoutOverlapping();
 
+// Sent quotes past valid_until can no longer be accepted; close them so the
+// follow-up list and conversion rate reflect live offers only.
+Schedule::command('quotes:expire')
+    ->dailyAt('00:30')
+    ->withoutOverlapping();
+
+// Bot visits older than Visitor::BOT_RETENTION_DAYS (human visits are kept).
+Schedule::command('model:prune', ['--model' => [\App\Models\Visitor::class]])
+    ->dailyAt('02:45')
+    ->withoutOverlapping();
+
 // Ledger, stock and customer-balance integrity; alerts admins on drift.
 Schedule::command('db:integrity-check --notify')
     ->dailyAt('03:00')
