@@ -235,50 +235,7 @@ class RmaController extends Controller
 
     public function store(Request $request)
     {
-        $request->validate([
-            'customer_id' => 'required|exists:customers,id',
-            'invoice_id' => 'required|exists:invoices,id',
-            // Where the returned goods go back into stock, decided up front.
-            'warehouse_id' => 'required|exists:warehouses,id',
-            'reason' => 'required|in:defective,wrong_item,damaged,not_as_described,changed_mind,other',
-            'type' => 'required|in:refund,exchange,store_credit',
-            'reason_description' => 'nullable|string|max:1000',
-            // A collection address is a convenience, not a contract: the goods
-            // are usually handed over at the counter, and the operator raising
-            // the request often knows only the city, or only a phone-dictated
-            // street. Each field therefore stands on its own — an earlier
-            // "started it, finish it" rule made the three mutually required and
-            // turned a half-known address into a blocked save, so an operator
-            // who knew the city had to either invent a street or clear the one
-            // real fact they had. Whatever is known gets stored; the rest is
-            // simply absent (see normalizedReturnAddress()).
-            'return_address' => 'nullable|array',
-            'return_address.address_line1' => 'nullable|string|max:255',
-            'return_address.city' => 'nullable|string|max:120',
-            'return_address.country' => 'nullable|string|max:120',
-            'return_address.postal_code' => 'nullable|string|max:32',
-            'items' => 'required|array|min:1',
-            'items.*.invoice_item_id' => 'required|exists:invoice_items,id',
-            'items.*.quantity_requested' => 'required|integer|min:1|max:999',
-            'items.*.condition' => 'required|in:new,used,damaged,missing',
-            'items.*.resolution' => 'required|in:refund,exchange,repair,discard',
-            'items.*.exchange_product_id' => 'nullable|exists:products,id|required_if:items.*.resolution,exchange',
-            'items.*.exchange_variant_id' => 'nullable|exists:product_variants,id',
-            'items.*.notes' => 'nullable|string|max:500',
-        ], [
-            'customer_id.required' => 'حقل العميل مطلوب',
-            'customer_id.exists' => 'العميل المحدد غير موجود',
-            'invoice_id.required' => 'حقل الفاتورة مطلوب',
-            'invoice_id.exists' => 'الفاتورة المحددة غير موجودة',
-            'warehouse_id.required' => 'يجب تحديد المستودع الوجهة',
-            'warehouse_id.exists' => 'المستودع المحدد غير موجود',
-            'reason.required' => 'حقل سبب الإرجاع مطلوب',
-            'type.required' => 'حقل نوع الإرجاع مطلوب',
-            'items.required' => 'يجب إضافة منتج واحد على الأقل',
-            'items.min' => 'يجب إضافة منتج واحد على الأقل',
-            'items.*.quantity_requested.max' => 'الكمية المطلوبة لا يمكن أن تتجاوز 999',
-            'items.*.exchange_product_id.required_if' => 'يجب تحديد المنتج البديل عند اختيار التبديل',
-        ]);
+        $this->validateStoreRequest($request);
 
         try {
             DB::beginTransaction();
@@ -298,23 +255,7 @@ class RmaController extends Controller
                 throw new \Exception('لا يمكن إنشاء طلب إرجاع لفاتورة لم تُعتمد أو تُسلَّم بعد');
             }
 
-            // Check that the returned quantities do not exceed original purchased quantities
-            foreach ($request->items as $item) {
-                $invoiceItem = InvoiceItem::findOrFail($item['invoice_item_id']);
-
-                // Sum previously requested quantities for this invoice line in active requests
-                $previouslyRequested = RmaItem::where('invoice_item_id', $item['invoice_item_id'])
-                    ->whereHas('rmaRequest', function ($query) {
-                        $query->whereNotIn('status', ['rejected', 'cancelled']);
-                    })
-                    ->sum('quantity_requested');
-
-                $totalRequested = $previouslyRequested + $item['quantity_requested'];
-                if ($totalRequested > $invoiceItem->quantity) {
-                    $availableToReturn = $invoiceItem->quantity - $previouslyRequested;
-                    throw new \Exception("الكمية المطلوبة ({$item['quantity_requested']}) تتجاوز الكمية المتاحة للإرجاع ({$availableToReturn}) للمنتج: ".($invoiceItem->product?->name ?? $invoiceItem->product_name));
-                }
-            }
+            $this->assertQuantitiesReturnable($request->items);
 
             // Generate unique RMA number using database lock
             $rmaNumber = DB::transaction(function () {
@@ -337,32 +278,7 @@ class RmaController extends Controller
                 'requested_at' => now(),
             ]);
 
-            $totalRefundAmount = 0;
-            foreach ($request->items as $item) {
-                $invoiceItem = InvoiceItem::findOrFail($item['invoice_item_id']);
-
-                $rmaItem = $rmaRequest->items()->create([
-                    'invoice_item_id' => $item['invoice_item_id'],
-                    'product_id' => $invoiceItem->product_id,
-                    'product_variant_id' => $invoiceItem->product_variant_id,
-                    'quantity_requested' => $item['quantity_requested'],
-                    'quantity_received' => 0,
-                    'condition' => $item['condition'],
-                    'resolution' => $item['resolution'],
-                    'exchange_product_id' => $item['exchange_product_id'] ?? null,
-                    'exchange_variant_id' => $item['exchange_variant_id'] ?? null,
-                    'notes' => $item['notes'] ?? null,
-                ]);
-
-                // Calculate refund amount based on condition, from what the
-                // customer actually paid per unit (after the invoice's
-                // discounts and with its tax), not the list price.
-                $originalPrice = $invoiceItem->refundableUnitPrice();
-                $refundAmount = $rmaItem->calculateRefundAmount($originalPrice);
-                $rmaItem->refund_amount = $refundAmount;
-                $rmaItem->save();
-                $totalRefundAmount += $refundAmount;
-            }
+            $totalRefundAmount = $this->createRmaItems($rmaRequest, $request->items);
 
             // Update total refund amount on RMA request
             $rmaRequest->refund_amount = $totalRefundAmount;
@@ -409,6 +325,115 @@ class RmaController extends Controller
                 'data' => null,
             ], 422);
         }
+    }
+
+    /** Validates a return request. */
+    private function validateStoreRequest(Request $request): void
+    {
+        $request->validate([
+            'customer_id' => 'required|exists:customers,id',
+            'invoice_id' => 'required|exists:invoices,id',
+            // Where the returned goods go back into stock, decided up front.
+            'warehouse_id' => 'required|exists:warehouses,id',
+            'reason' => 'required|in:defective,wrong_item,damaged,not_as_described,changed_mind,other',
+            'type' => 'required|in:refund,exchange,store_credit',
+            'reason_description' => 'nullable|string|max:1000',
+            // A collection address is a convenience, not a contract: the goods
+            // are usually handed over at the counter, and the operator raising
+            // the request often knows only the city, or only a phone-dictated
+            // street. Each field therefore stands on its own — an earlier
+            // "started it, finish it" rule made the three mutually required and
+            // turned a half-known address into a blocked save, so an operator
+            // who knew the city had to either invent a street or clear the one
+            // real fact they had. Whatever is known gets stored; the rest is
+            // simply absent (see normalizedReturnAddress()).
+            'return_address' => 'nullable|array',
+            'return_address.address_line1' => 'nullable|string|max:255',
+            'return_address.city' => 'nullable|string|max:120',
+            'return_address.country' => 'nullable|string|max:120',
+            'return_address.postal_code' => 'nullable|string|max:32',
+            'items' => 'required|array|min:1',
+            'items.*.invoice_item_id' => 'required|exists:invoice_items,id',
+            'items.*.quantity_requested' => 'required|integer|min:1|max:999',
+            'items.*.condition' => 'required|in:new,used,damaged,missing',
+            'items.*.resolution' => 'required|in:refund,exchange,repair,discard',
+            'items.*.exchange_product_id' => 'nullable|exists:products,id|required_if:items.*.resolution,exchange',
+            'items.*.exchange_variant_id' => 'nullable|exists:product_variants,id',
+            'items.*.notes' => 'nullable|string|max:500',
+        ], [
+            'customer_id.required' => 'حقل العميل مطلوب',
+            'customer_id.exists' => 'العميل المحدد غير موجود',
+            'invoice_id.required' => 'حقل الفاتورة مطلوب',
+            'invoice_id.exists' => 'الفاتورة المحددة غير موجودة',
+            'warehouse_id.required' => 'يجب تحديد المستودع الوجهة',
+            'warehouse_id.exists' => 'المستودع المحدد غير موجود',
+            'reason.required' => 'حقل سبب الإرجاع مطلوب',
+            'type.required' => 'حقل نوع الإرجاع مطلوب',
+            'items.required' => 'يجب إضافة منتج واحد على الأقل',
+            'items.min' => 'يجب إضافة منتج واحد على الأقل',
+            'items.*.quantity_requested.max' => 'الكمية المطلوبة لا يمكن أن تتجاوز 999',
+            'items.*.exchange_product_id.required_if' => 'يجب تحديد المنتج البديل عند اختيار التبديل',
+        ]);
+    }
+
+    /** Refuses lines that, with earlier active requests, return more than was bought. */
+    private function assertQuantitiesReturnable(array $items): void
+    {
+        // The returned quantities may not exceed the original purchased quantities.
+    // Check that the returned quantities do not exceed original purchased quantities
+    foreach ($items as $item) {
+        $invoiceItem = InvoiceItem::findOrFail($item['invoice_item_id']);
+
+        // Sum previously requested quantities for this invoice line in active requests
+        $previouslyRequested = RmaItem::where('invoice_item_id', $item['invoice_item_id'])
+            ->whereHas('rmaRequest', function ($query) {
+                $query->whereNotIn('status', ['rejected', 'cancelled']);
+            })
+            ->sum('quantity_requested');
+
+        $totalRequested = $previouslyRequested + $item['quantity_requested'];
+        if ($totalRequested > $invoiceItem->quantity) {
+            $availableToReturn = $invoiceItem->quantity - $previouslyRequested;
+            throw new \Exception("الكمية المطلوبة ({$item['quantity_requested']}) تتجاوز الكمية المتاحة للإرجاع ({$availableToReturn}) للمنتج: ".($invoiceItem->product?->name ?? $invoiceItem->product_name));
+        }
+    }
+    }
+
+    /**
+     * Writes the request's lines and prices each refund from what the customer paid.
+     *
+     * @return float the total refund amount
+     */
+    private function createRmaItems(RmaRequest $rmaRequest, array $items): float
+    {
+    $totalRefundAmount = 0;
+    foreach ($items as $item) {
+        $invoiceItem = InvoiceItem::findOrFail($item['invoice_item_id']);
+
+        $rmaItem = $rmaRequest->items()->create([
+            'invoice_item_id' => $item['invoice_item_id'],
+            'product_id' => $invoiceItem->product_id,
+            'product_variant_id' => $invoiceItem->product_variant_id,
+            'quantity_requested' => $item['quantity_requested'],
+            'quantity_received' => 0,
+            'condition' => $item['condition'],
+            'resolution' => $item['resolution'],
+            'exchange_product_id' => $item['exchange_product_id'] ?? null,
+            'exchange_variant_id' => $item['exchange_variant_id'] ?? null,
+            'notes' => $item['notes'] ?? null,
+        ]);
+
+        // Calculate refund amount based on condition, from what the
+        // customer actually paid per unit (after the invoice's
+        // discounts and with its tax), not the list price.
+        $originalPrice = $invoiceItem->refundableUnitPrice();
+        $refundAmount = $rmaItem->calculateRefundAmount($originalPrice);
+        $rmaItem->refund_amount = $refundAmount;
+        $rmaItem->save();
+        $totalRefundAmount += $refundAmount;
+    }
+
+        return (float) $totalRefundAmount;
     }
 
     public function approve(Request $request, $id)
@@ -586,89 +611,7 @@ class RmaController extends Controller
                 // must not be booked into the warehouse. Previously they fell
                 // into the `used` branch and were quarantined as real stock.
                 if ($delta !== 0 && $rmaItem->condition !== RmaItem::CONDITION_MISSING) {
-                    // Which bucket the returned units land in depends on their condition.
-                    [$condition, $noteLabel] = match ($rmaItem->condition) {
-                        RmaItem::CONDITION_NEW => ['available', 'مرتجع سليم'],
-                        RmaItem::CONDITION_DAMAGED => ['damaged', 'مرتجع تالف'],
-                        default => ['quarantined', 'مرتجع مستعمل (قيد المعاينة)'],
-                    };
-
-                    $orderRef = $rmaRequest->invoice?->invoice_number ?? '';
-                    $note = $delta > 0
-                        ? "{$noteLabel} من العميل لفاتورة {$orderRef}"
-                        : "تصحيح كمية الاستلام لطلب الإرجاع {$rmaRequest->rma_number}";
-
-                    // Returned units must not open a zero-cost layer: the FIFO
-                    // layers decide what a later sale costs, and stock that came
-                    // back valued at 0 quietly understates the inventory's worth
-                    // and inflates the margin of whatever finally ships. The
-                    // units are valued at what they cost to acquire (the variant
-                    // cost when there is one, else the product's).
-                    //
-                    // What they cost is what the sale took them out at: the
-                    // invoice line's cost, per stock unit. That is the figure
-                    // its cost-of-sales entry booked, so it is the one to put
-                    // back; today's average cost only stands in for a line
-                    // sold before costs were recorded.
-                    $invoiceItem = $rmaItem->invoiceItem;
-                    $factor = $invoiceItem?->stockFactor() ?? 1;
-                    $variantId = $rmaItem->product_variant_id ?: $invoiceItem?->product_variant_id;
-                    $soldUnits = $invoiceItem ? (int) $invoiceItem->quantity * $factor : 0;
-                    // A recorded cost of 0 is a fact (the units came off zero-cost
-                    // layers) and is put back as such; only a line with no cost
-                    // recorded at all falls back to today's.
-                    $saleCost = $invoiceItem && $invoiceItem->total_cost !== null && $soldUnits > 0
-                        ? (float) $invoiceItem->total_cost / $soldUnits
-                        : null;
-                    $variant = $variantId ? ProductVariant::find($variantId) : null;
-                    $returnCost = $saleCost ?? (float) (
-                        $variant?->cost_price
-                            ? $variant->cost_price
-                            : ($rmaItem->product?->cost_price ?? 0)
-                    );
-
-                    // Book the change through InventoryService, which keeps the
-                    // warehouse row (quantity + condition bucket), the movement
-                    // trail and products.stock_quantity consistent. No movement
-                    // key here: markAsReceived() above already assigns rather
-                    // than adds, and `delta` is derived from the old count, so
-                    // re-submitting the same dialog can never double-book stock.
-                    // Counted in the unit the invoice sold — two boxes back
-                    // are 24 pieces on the shelf.
-                    $movement = app(InventoryService::class)->move(
-                        $rmaItem->product_id,
-                        $delta * $factor,
-                        $warehouseId,
-                        $delta > 0
-                            ? StockMovement::TYPE_IN
-                            : StockMovement::TYPE_OUT,
-                        [
-                            'reference' => $rmaRequest->rma_number,
-                            'source' => 'rma',
-                            'reason' => $note,
-                            'condition' => $condition,
-                            'bin_id' => $binId,
-                            'cost_variant_id' => $variantId,
-                            'unit_cost' => $returnCost,
-                            'allow_negative' => $delta < 0,
-                            'created_by' => auth()->id(),
-                        ]
-                    );
-
-                    // The size sold keeps its own count, as the sale took it
-                    // down (InvoiceController) and a purchase brings it up.
-                    ProductVariant::adjustStockCount($variantId, $delta * $factor);
-
-                    // And the books: the goods are inventory again and no
-                    // longer a cost of sale. Without this the stock came back
-                    // while the inventory account stayed down and the cost
-                    // of sales stayed up by what they cost. Only for a sale
-                    // that booked a cost: an invoice from before costs were
-                    // recorded never took the goods out of the inventory
-                    // account, so there is nothing to put back.
-                    if ($movement && $saleCost !== null) {
-                        app(LedgerPostingService::class)->postSalesReturnRestock($movement, $rmaRequest->rma_number);
-                    }
+                    $this->restockReturnedUnits($rmaRequest, $rmaItem, $delta, $warehouseId, $binId);
                 }
             }
 
@@ -710,6 +653,98 @@ class RmaController extends Controller
                 'data' => null,
             ], 422);
         }
+    }
+
+    /**
+     * Books returned units back into the warehouse bucket matching their
+     * condition, valued at what the sale took them out at, and restores the
+     * cost of sales in the ledger. Runs inside receiveItems()'s transaction.
+     */
+    private function restockReturnedUnits(RmaRequest $rmaRequest, RmaItem $rmaItem, int $delta, $warehouseId, $binId): void
+    {
+            // Which bucket the returned units land in depends on their condition.
+            [$condition, $noteLabel] = match ($rmaItem->condition) {
+                RmaItem::CONDITION_NEW => ['available', 'مرتجع سليم'],
+                RmaItem::CONDITION_DAMAGED => ['damaged', 'مرتجع تالف'],
+                default => ['quarantined', 'مرتجع مستعمل (قيد المعاينة)'],
+            };
+
+            $orderRef = $rmaRequest->invoice?->invoice_number ?? '';
+            $note = $delta > 0
+                ? "{$noteLabel} من العميل لفاتورة {$orderRef}"
+                : "تصحيح كمية الاستلام لطلب الإرجاع {$rmaRequest->rma_number}";
+
+            // Returned units must not open a zero-cost layer: the FIFO
+            // layers decide what a later sale costs, and stock that came
+            // back valued at 0 quietly understates the inventory's worth
+            // and inflates the margin of whatever finally ships. The
+            // units are valued at what they cost to acquire (the variant
+            // cost when there is one, else the product's).
+            //
+            // What they cost is what the sale took them out at: the
+            // invoice line's cost, per stock unit. That is the figure
+            // its cost-of-sales entry booked, so it is the one to put
+            // back; today's average cost only stands in for a line
+            // sold before costs were recorded.
+            $invoiceItem = $rmaItem->invoiceItem;
+            $factor = $invoiceItem?->stockFactor() ?? 1;
+            $variantId = $rmaItem->product_variant_id ?: $invoiceItem?->product_variant_id;
+            $soldUnits = $invoiceItem ? (int) $invoiceItem->quantity * $factor : 0;
+            // A recorded cost of 0 is a fact (the units came off zero-cost
+            // layers) and is put back as such; only a line with no cost
+            // recorded at all falls back to today's.
+            $saleCost = $invoiceItem && $invoiceItem->total_cost !== null && $soldUnits > 0
+                ? (float) $invoiceItem->total_cost / $soldUnits
+                : null;
+            $variant = $variantId ? ProductVariant::find($variantId) : null;
+            $returnCost = $saleCost ?? (float) (
+                $variant?->cost_price
+                    ? $variant->cost_price
+                    : ($rmaItem->product?->cost_price ?? 0)
+            );
+
+            // Book the change through InventoryService, which keeps the
+            // warehouse row (quantity + condition bucket), the movement
+            // trail and products.stock_quantity consistent. No movement
+            // key here: markAsReceived() above already assigns rather
+            // than adds, and `delta` is derived from the old count, so
+            // re-submitting the same dialog can never double-book stock.
+            // Counted in the unit the invoice sold — two boxes back
+            // are 24 pieces on the shelf.
+            $movement = app(InventoryService::class)->move(
+                $rmaItem->product_id,
+                $delta * $factor,
+                $warehouseId,
+                $delta > 0
+                    ? StockMovement::TYPE_IN
+                    : StockMovement::TYPE_OUT,
+                [
+                    'reference' => $rmaRequest->rma_number,
+                    'source' => 'rma',
+                    'reason' => $note,
+                    'condition' => $condition,
+                    'bin_id' => $binId,
+                    'cost_variant_id' => $variantId,
+                    'unit_cost' => $returnCost,
+                    'allow_negative' => $delta < 0,
+                    'created_by' => auth()->id(),
+                ]
+            );
+
+            // The size sold keeps its own count, as the sale took it
+            // down (InvoiceController) and a purchase brings it up.
+            ProductVariant::adjustStockCount($variantId, $delta * $factor);
+
+            // And the books: the goods are inventory again and no
+            // longer a cost of sale. Without this the stock came back
+            // while the inventory account stayed down and the cost
+            // of sales stayed up by what they cost. Only for a sale
+            // that booked a cost: an invoice from before costs were
+            // recorded never took the goods out of the inventory
+            // account, so there is nothing to put back.
+            if ($movement && $saleCost !== null) {
+                app(LedgerPostingService::class)->postSalesReturnRestock($movement, $rmaRequest->rma_number);
+            }
     }
 
     public function complete(Request $request, $id)

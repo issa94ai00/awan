@@ -336,46 +336,7 @@ class SalesOrderController extends Controller
 
     public function store(Request $request)
     {
-        $validated = $request->validate([
-            'customer_id' => 'required|exists:customers,id',
-            // "confirm": save and confirm in one step — the reservation, the
-            // invoice and the entry follow at once. A refusal (short stock)
-            // still leaves the order saved, as a draft, and says why.
-            'execute' => 'nullable|in:confirm',
-            'assigned_employee_id' => 'nullable|exists:employees,id',
-            'fulfillment_warehouse_id' => 'nullable|exists:warehouses,id',
-            'fulfillment_type' => 'nullable|in:ship,pickup,delivery',
-            'order_date' => 'nullable|date',
-            // Same-day delivery is allowed (the form's "today" chip).
-            'expected_delivery' => 'nullable|date|after_or_equal:order_date',
-            'discount' => 'nullable|numeric|min:0',
-            'discount_percent' => 'nullable|numeric|min:0|max:100',
-            'tax' => 'nullable|numeric|min:0',
-            'tax_percent' => 'nullable|numeric|min:0|max:100',
-            'shipping_cost' => 'nullable|numeric|min:0',
-            'shipping_address' => 'nullable|string|max:500',
-            'notes' => 'nullable|string|max:1000',
-            'items' => 'required|array|min:1',
-            'items.*.product_id' => 'required|exists:products,id',
-            'items.*.quantity' => 'required|integer|min:1',
-            'items.*.unit_price' => 'required|numeric|min:0',
-            'items.*.discount' => 'nullable|numeric|min:0',
-            'items.*.tax' => 'nullable|numeric|min:0',
-            'items.*.product_unit_id' => 'nullable|integer|exists:product_units,id',
-            'items.*.product_variant_id' => 'nullable|integer|exists:product_variants,id',
-            // Which warehouses fill each line, as the new-order wizard planned
-            // it. Optional: an order saved without one is routed at
-            // confirmation, as before.
-            'items.*.allocations' => 'nullable|array',
-            'items.*.allocations.*.warehouse_id' => 'required|integer|exists:warehouses,id',
-            'items.*.allocations.*.quantity' => 'required|integer|min:1',
-            'expenses' => 'nullable|array',
-            'expenses.*.description' => 'required_with:expenses|string|max:255',
-            'expenses.*.amount' => 'required_with:expenses|numeric|min:0',
-            'expenses.*.category' => 'nullable|string|in:shipping,packaging,handling,other',
-            'expenses.*.status' => 'nullable|string|in:pending,paid,approved,rejected',
-            'expenses.*.notes' => 'nullable|string|max:1000',
-        ], $this->validationMessages());
+        $validated = $request->validate($this->storeRules(), $this->validationMessages());
 
         // A rep raises orders for their own customers only, and only as drafts:
         // confirming is someone else's step (User::isSalesRep).
@@ -437,39 +398,12 @@ class SalesOrderController extends Controller
 
         $validated['subtotal'] = $subtotal;
 
-        $discountPercent = isset($validated['discount_percent']) && $validated['discount_percent'] !== '' && $validated['discount_percent'] !== null
-            ? (float) $validated['discount_percent']
-            : null;
-        $taxPercent = isset($validated['tax_percent']) && $validated['tax_percent'] !== '' && $validated['tax_percent'] !== null
-            ? (float) $validated['tax_percent']
-            : null;
-
-        $discountAmount = $discountPercent !== null
-            ? round(max(0, $subtotal) * ($discountPercent / 100), 5)
-            : (float) ($validated['discount'] ?? 0);
-        $taxAmount = $taxPercent !== null
-            ? round(max(0, $subtotal - $discountAmount) * ($taxPercent / 100), 5)
-            : (float) ($validated['tax'] ?? 0);
-
-        if ($discountPercent === null && $discountAmount - max(0, $subtotal) > 0.005) {
-            throw ValidationException::withMessages([
-                'discount' => [sprintf(
-                    'مبلغ الخصم (%s) أكبر من مجموع المنتجات (%s).',
-                    number_format($discountAmount, 2),
-                    number_format(max(0, $subtotal), 2)
-                )],
-            ]);
-        }
-
-        $validated['discount'] = $discountAmount;
-        $validated['discount_percent'] = $discountPercent;
-        $validated['tax'] = $taxAmount;
-        $validated['tax_percent'] = $taxPercent;
+        $validated = $this->applyOrderTotals($validated, null, $subtotal);
 
         // Delivery charged to the customer belongs in what they owe. It was
         // stored on the order but left out of the total, so every shipped order
         // was invoiced for less than it was worth.
-        $validated['total'] = round($subtotal - $discountAmount + $taxAmount + (float) ($validated['shipping_cost'] ?? 0), 2);
+        $validated['total'] = round($subtotal - $validated['discount'] + $validated['tax'] + (float) ($validated['shipping_cost'] ?? 0), 2);
 
         unset($validated['execute']);
 
@@ -483,24 +417,7 @@ class SalesOrderController extends Controller
                     $created[] = $salesOrder->items()->create($item);
                 }
 
-                foreach ($expensesInput as $exp) {
-                    if (! empty($exp['description']) && (float) ($exp['amount'] ?? 0) > 0) {
-                        $createdExpenses[] = Expense::create([
-                            'expense_number' => DocumentNumbers::format('expense', ((int) Expense::max('id')) + 1),
-                            'sales_order_id' => $salesOrder->id,
-                            'customer_id' => $salesOrder->customer_id,
-                            'description' => $exp['description'],
-                            'amount' => (float) $exp['amount'],
-                            'category' => $exp['category'] ?? 'shipping',
-                            'expense_date' => now(),
-                            'status' => $exp['status'] ?? Expense::STATUS_PENDING,
-                            'notes' => $exp['notes'] ?? null,
-                            'created_by' => auth()->id(),
-                            'currency' => base_currency_code(),
-                            'exchange_rate' => 1.0000,
-                        ]);
-                    }
-                }
+                $createdExpenses = $this->createExpenses($salesOrder, $expensesInput);
 
                 // Opens the stage history, so the trail starts where the order
                 // does rather than at whatever its first transition happens to be.
@@ -548,6 +465,51 @@ class SalesOrderController extends Controller
             'execution' => $execution,
             'warnings' => BelowCostWarnings::forLines($salesOrder->items) ?: null,
         ], 201);
+    }
+
+    /** Validation rules for creating an order. @return array<string, mixed> */
+    private function storeRules(): array
+    {
+        return [
+            'customer_id' => 'required|exists:customers,id',
+            // "confirm": save and confirm in one step — the reservation, the
+            // invoice and the entry follow at once. A refusal (short stock)
+            // still leaves the order saved, as a draft, and says why.
+            'execute' => 'nullable|in:confirm',
+            'assigned_employee_id' => 'nullable|exists:employees,id',
+            'fulfillment_warehouse_id' => 'nullable|exists:warehouses,id',
+            'fulfillment_type' => 'nullable|in:ship,pickup,delivery',
+            'order_date' => 'nullable|date',
+            // Same-day delivery is allowed (the form's "today" chip).
+            'expected_delivery' => 'nullable|date|after_or_equal:order_date',
+            'discount' => 'nullable|numeric|min:0',
+            'discount_percent' => 'nullable|numeric|min:0|max:100',
+            'tax' => 'nullable|numeric|min:0',
+            'tax_percent' => 'nullable|numeric|min:0|max:100',
+            'shipping_cost' => 'nullable|numeric|min:0',
+            'shipping_address' => 'nullable|string|max:500',
+            'notes' => 'nullable|string|max:1000',
+            'items' => 'required|array|min:1',
+            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.quantity' => 'required|integer|min:1',
+            'items.*.unit_price' => 'required|numeric|min:0',
+            'items.*.discount' => 'nullable|numeric|min:0',
+            'items.*.tax' => 'nullable|numeric|min:0',
+            'items.*.product_unit_id' => 'nullable|integer|exists:product_units,id',
+            'items.*.product_variant_id' => 'nullable|integer|exists:product_variants,id',
+            // Which warehouses fill each line, as the new-order wizard planned
+            // it. Optional: an order saved without one is routed at
+            // confirmation, as before.
+            'items.*.allocations' => 'nullable|array',
+            'items.*.allocations.*.warehouse_id' => 'required|integer|exists:warehouses,id',
+            'items.*.allocations.*.quantity' => 'required|integer|min:1',
+            'expenses' => 'nullable|array',
+            'expenses.*.description' => 'required_with:expenses|string|max:255',
+            'expenses.*.amount' => 'required_with:expenses|numeric|min:0',
+            'expenses.*.category' => 'nullable|string|in:shipping,packaging,handling,other',
+            'expenses.*.status' => 'nullable|string|in:pending,paid,approved,rejected',
+            'expenses.*.notes' => 'nullable|string|max:1000',
+        ];
     }
 
     public function show(SalesOrder $salesOrder)
@@ -823,21 +785,21 @@ class SalesOrderController extends Controller
      *
      * @return array<string, mixed> $validated with discount/tax and their percents settled
      */
-    private function applyOrderTotals(array $validated, SalesOrder $salesOrder, float $subtotal): array
+    private function applyOrderTotals(array $validated, ?SalesOrder $salesOrder, float $subtotal): array
     {
         $discountPercent = array_key_exists('discount_percent', $validated)
             ? ($validated['discount_percent'] !== '' && $validated['discount_percent'] !== null ? (float) $validated['discount_percent'] : null)
-            : ($salesOrder->discount_percent ?? null);
+            : ($salesOrder?->discount_percent ?? null);
         $taxPercent = array_key_exists('tax_percent', $validated)
             ? ($validated['tax_percent'] !== '' && $validated['tax_percent'] !== null ? (float) $validated['tax_percent'] : null)
-            : ($salesOrder->tax_percent ?? null);
+            : ($salesOrder?->tax_percent ?? null);
 
         $discountAmount = $discountPercent !== null
             ? round(max(0, $subtotal) * ($discountPercent / 100), 5)
-            : (float) ($validated['discount'] ?? $salesOrder->discount ?? 0);
+            : (float) ($validated['discount'] ?? $salesOrder?->discount ?? 0);
         $taxAmount = $taxPercent !== null
             ? round(max(0, $subtotal - $discountAmount) * ($taxPercent / 100), 5)
-            : (float) ($validated['tax'] ?? $salesOrder->tax ?? 0);
+            : (float) ($validated['tax'] ?? $salesOrder?->tax ?? 0);
 
         if ($discountPercent === null && $discountAmount - max(0, $subtotal) > 0.005) {
             throw ValidationException::withMessages([
@@ -864,20 +826,30 @@ class SalesOrderController extends Controller
      */
     private function replaceExpenses(SalesOrder $salesOrder, mixed $expensesInput): array
     {
-        $createdExpenses = [];
-    foreach ($salesOrder->expenses()->get() as $oldExp) {
-        try {
-            $this->ledger->reverseFor($oldExp->postingKey());
-        } catch (\Throwable $e) {
-            report($e);
+        foreach ($salesOrder->expenses()->get() as $oldExp) {
+            try {
+                $this->ledger->reverseFor($oldExp->postingKey());
+            } catch (\Throwable $e) {
+                report($e);
+            }
         }
-    }
-    $salesOrder->expenses()->delete();
+        $salesOrder->expenses()->delete();
 
-    if (is_array($expensesInput)) {
+        return is_array($expensesInput) ? $this->createExpenses($salesOrder, $expensesInput) : [];
+    }
+
+    /**
+     * Creates the order's expense rows, skipping blank or zero ones.
+     *
+     * @return list<Expense> to be posted to the ledger once the transaction commits
+     */
+    private function createExpenses(SalesOrder $salesOrder, array $expensesInput): array
+    {
+        $created = [];
+
         foreach ($expensesInput as $exp) {
             if (! empty($exp['description']) && (float) ($exp['amount'] ?? 0) > 0) {
-                $createdExpenses[] = Expense::create([
+                $created[] = Expense::create([
                     'expense_number' => DocumentNumbers::format('expense', ((int) Expense::max('id')) + 1),
                     'sales_order_id' => $salesOrder->id,
                     'customer_id' => $salesOrder->customer_id,
@@ -893,27 +865,29 @@ class SalesOrderController extends Controller
                 ]);
             }
         }
-    }
 
-        return $createdExpenses;
+        return $created;
     }
 
     /** Rewrites an order's lines and, unless it is cancelled, re-applies the sourcing plan. */
     private function rewriteLines(SalesOrder $salesOrder, array $lineItems, mixed $requestItems, bool $cancelled): void
     {
-$salesOrder->items()->delete();
-$created = [];
-foreach ($lineItems as $item) {
-    $created[] = $salesOrder->items()->create($item);
-}
+        // The lines are rewritten, and their allocations with them; the
+        // warehouses the order was routed through go too when a plan is
+        // sent, so it is the whole plan rather than laid over the old.
+        $salesOrder->items()->delete();
+        $created = [];
+        foreach ($lineItems as $item) {
+            $created[] = $salesOrder->items()->create($item);
+        }
 
-// A cancelled order holds no stock, so its lines are only
-// rewritten — it is not routed or reserved again.
-$plan = $cancelled ? [] : $this->planFrom($created, $requestItems);
-if (array_filter($plan)) {
-    $salesOrder->routings()->sync([]);
-    $this->workflow->applyInitialPlan($salesOrder->refresh(), $plan);
-}
+        // A cancelled order holds no stock, so its lines are only
+        // rewritten — it is not routed or reserved again.
+        $plan = $cancelled ? [] : $this->planFrom($created, $requestItems);
+        if (array_filter($plan)) {
+            $salesOrder->routings()->sync([]);
+            $this->workflow->applyInitialPlan($salesOrder->refresh(), $plan);
+        }
     }
 
     /**

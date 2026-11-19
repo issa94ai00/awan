@@ -185,27 +185,7 @@ class FieldOrderController extends Controller
     {
         $scope = FieldScope::for($request->user());
 
-        $validated = $request->validate([
-            'warehouse_id' => 'nullable|integer|exists:warehouses,id',
-            'customer_id' => 'nullable|integer|exists:customers,id',
-            'customer_name' => 'required_without:customer_id|nullable|string|max:255',
-            'customer_phone' => 'required_without:customer_id|nullable|string|max:30',
-            'fulfillment_type' => 'nullable|in:ship,pickup,delivery',
-            'expected_delivery' => 'nullable|date',
-            'shipping_address' => 'nullable|string|max:500',
-            'notes' => 'nullable|string|max:1000',
-            'discount' => 'nullable|numeric|min:0',
-            'tax' => 'nullable|numeric|min:0',
-            'shipping_cost' => 'nullable|numeric|min:0',
-            'confirm' => 'nullable|boolean',
-            // The seller's answer to "shall I take the rest from the main
-            // warehouse?". Absent means no, and a short order is refused.
-            'supply_from_main' => 'nullable|boolean',
-            'items' => 'required|array|min:1',
-            'items.*.product_id' => 'required|integer|exists:products,id',
-            'items.*.quantity' => 'required|integer|min:1',
-            'items.*.discount' => 'nullable|numeric|min:0',
-        ]);
+        $validated = $request->validate($this->storeRules());
 
         try {
             $warehouseId = $scope->resolveWarehouseId($validated['warehouse_id'] ?? null);
@@ -260,89 +240,9 @@ class FieldOrderController extends Controller
             $order = DB::transaction(function () use ($validated, $sourcedLines, $warehouseId, $scope, $request) {
                 $customer = $this->resolveCustomer($validated);
 
-                $products = Product::whereIn('id', collect($sourcedLines)->pluck('product_id'))
-                    ->get()
-                    ->keyBy('id');
+                [$lines, $subtotal] = $this->priceLines($sourcedLines);
 
-                $lines = [];
-                $subtotal = 0.0;
-
-                foreach ($sourcedLines as $line) {
-                    $product = $products[$line['product_id']];
-                    $unitPrice = (float) ($product->price ?: $product->cost_price ?: 0);
-                    $discount = (float) $line['discount'];
-                    $lineTotal = $unitPrice * (int) $line['quantity'] - $discount;
-
-                    $lines[] = [
-                        'product_id' => $product->id,
-                        'quantity' => (int) $line['quantity'],
-                        'unit_price' => $unitPrice,
-                        'discount' => $discount,
-                        'tax' => 0,
-                        'description' => $line['description'],
-                        // Not a column — carried alongside so the allocation can
-                        // be written once the line has an id.
-                        'source_warehouse_id' => (int) $line['warehouse_id'],
-                    ];
-                    $subtotal += $lineTotal;
-                }
-
-                $order = SalesOrder::create([
-                    // Derived from the last id, not a count: counting reuses a
-                    // number the moment any order is deleted.
-                    'order_number' => DocumentNumbers::format('sales_order', ((int) SalesOrder::max('id')) + 1),
-                    'customer_id' => $customer->id,
-                    'status' => SalesOrder::STATUS_PENDING,
-                    'order_date' => now()->toDateString(),
-                    'expected_delivery' => $validated['expected_delivery'] ?? null,
-                    'subtotal' => round($subtotal, 2),
-                    'discount' => (float) ($validated['discount'] ?? 0),
-                    'tax' => (float) ($validated['tax'] ?? 0),
-                    'shipping_cost' => (float) ($validated['shipping_cost'] ?? 0),
-                    'total' => round($subtotal - (float) ($validated['discount'] ?? 0)
-                        + (float) ($validated['tax'] ?? 0) + (float) ($validated['shipping_cost'] ?? 0), 2),
-                    'currency' => base_currency_code(),
-                    'fulfillment_type' => $validated['fulfillment_type'] ?? SalesOrder::FULFILLMENT_PICKUP,
-                    'fulfillment_warehouse_id' => $warehouseId,
-                    'assigned_employee_id' => $scope->employee()?->id,
-                    'shipping_address' => $validated['shipping_address'] ?? null,
-                    'notes' => $validated['notes'] ?? null,
-                    'created_by' => $request->user()->id,
-                ]);
-
-                foreach ($lines as $line) {
-                    $sourceWarehouseId = $line['source_warehouse_id'];
-                    unset($line['source_warehouse_id']);
-
-                    $item = $order->items()->create($line);
-
-                    // Every line says where it is picked from, including the
-                    // ordinary branch-only case. Leaving that implicit would
-                    // work — the workflow falls back to the order's warehouse —
-                    // but only until someone re-routes the order, at which point
-                    // the branch's units would silently follow it somewhere the
-                    // seller never chose.
-                    $item->allocations()->create([
-                        'warehouse_id' => $sourceWarehouseId,
-                        'quantity' => (int) $line['quantity'],
-                        'status' => 'pending',
-                    ]);
-                }
-
-                $supplyLines = collect($lines)->where('description', '!=', null);
-
-                SalesOrderStatusHistory::create([
-                    'sales_order_id' => $order->id,
-                    'from_status' => null,
-                    'to_status' => SalesOrder::STATUS_PENDING,
-                    'note' => $supplyLines->isEmpty()
-                        ? 'إنشاء طلب من التطبيق الميداني'
-                        : 'إنشاء طلب من التطبيق الميداني مع ' . $supplyLines->count()
-                            . ' بند مكمِّل من المستودع الرئيسي',
-                    'user_id' => $request->user()->id,
-                ]);
-
-                return $order;
+                return $this->createOrder($validated, $customer, $lines, $subtotal, $warehouseId, $scope, $request);
             });
 
             // Confirming in the same call is what a counter sale needs: the goods
@@ -379,6 +279,133 @@ class FieldOrderController extends Controller
                 'has_supply_lines' => $supplied->isNotEmpty(),
             ],
         ], 201);
+    }
+
+    /**
+     * Writes the draft order, its lines with their source warehouses, and the
+     * first line of its history. Runs inside store()'s transaction.
+     */
+    private function createOrder(array $validated, $customer, array $lines, float $subtotal, ?int $warehouseId, $scope, Request $request): SalesOrder
+    {
+        $order = SalesOrder::create([
+            // Derived from the last id, not a count: counting reuses a
+            // number the moment any order is deleted.
+            'order_number' => DocumentNumbers::format('sales_order', ((int) SalesOrder::max('id')) + 1),
+            'customer_id' => $customer->id,
+            'status' => SalesOrder::STATUS_PENDING,
+            'order_date' => now()->toDateString(),
+            'expected_delivery' => $validated['expected_delivery'] ?? null,
+            'subtotal' => round($subtotal, 2),
+            'discount' => (float) ($validated['discount'] ?? 0),
+            'tax' => (float) ($validated['tax'] ?? 0),
+            'shipping_cost' => (float) ($validated['shipping_cost'] ?? 0),
+            'total' => round($subtotal - (float) ($validated['discount'] ?? 0)
+                + (float) ($validated['tax'] ?? 0) + (float) ($validated['shipping_cost'] ?? 0), 2),
+            'currency' => base_currency_code(),
+            'fulfillment_type' => $validated['fulfillment_type'] ?? SalesOrder::FULFILLMENT_PICKUP,
+            'fulfillment_warehouse_id' => $warehouseId,
+            'assigned_employee_id' => $scope->employee()?->id,
+            'shipping_address' => $validated['shipping_address'] ?? null,
+            'notes' => $validated['notes'] ?? null,
+            'created_by' => $request->user()->id,
+        ]);
+
+        foreach ($lines as $line) {
+            $sourceWarehouseId = $line['source_warehouse_id'];
+            unset($line['source_warehouse_id']);
+
+            $item = $order->items()->create($line);
+
+            // Every line says where it is picked from, including the
+            // ordinary branch-only case. Leaving that implicit would
+            // work — the workflow falls back to the order's warehouse —
+            // but only until someone re-routes the order, at which point
+            // the branch's units would silently follow it somewhere the
+            // seller never chose.
+            $item->allocations()->create([
+                'warehouse_id' => $sourceWarehouseId,
+                'quantity' => (int) $line['quantity'],
+                'status' => 'pending',
+            ]);
+        }
+
+        $supplyLines = collect($lines)->where('description', '!=', null);
+
+        SalesOrderStatusHistory::create([
+            'sales_order_id' => $order->id,
+            'from_status' => null,
+            'to_status' => SalesOrder::STATUS_PENDING,
+            'note' => $supplyLines->isEmpty()
+                ? 'إنشاء طلب من التطبيق الميداني'
+                : 'إنشاء طلب من التطبيق الميداني مع ' . $supplyLines->count()
+                    . ' بند مكمِّل من المستودع الرئيسي',
+            'user_id' => $request->user()->id,
+        ]);
+
+        return $order;
+    }
+
+    /** Validation rules for a field order. @return array<string, mixed> */
+    private function storeRules(): array
+    {
+        return [
+            'warehouse_id' => 'nullable|integer|exists:warehouses,id',
+            'customer_id' => 'nullable|integer|exists:customers,id',
+            'customer_name' => 'required_without:customer_id|nullable|string|max:255',
+            'customer_phone' => 'required_without:customer_id|nullable|string|max:30',
+            'fulfillment_type' => 'nullable|in:ship,pickup,delivery',
+            'expected_delivery' => 'nullable|date',
+            'shipping_address' => 'nullable|string|max:500',
+            'notes' => 'nullable|string|max:1000',
+            'discount' => 'nullable|numeric|min:0',
+            'tax' => 'nullable|numeric|min:0',
+            'shipping_cost' => 'nullable|numeric|min:0',
+            'confirm' => 'nullable|boolean',
+            // The seller's answer to "shall I take the rest from the main
+            // warehouse?". Absent means no, and a short order is refused.
+            'supply_from_main' => 'nullable|boolean',
+            'items' => 'required|array|min:1',
+            'items.*.product_id' => 'required|integer|exists:products,id',
+            'items.*.quantity' => 'required|integer|min:1',
+            'items.*.discount' => 'nullable|numeric|min:0',
+        ];
+    }
+
+    /**
+     * Prices the sourced lines from the catalogue.
+     *
+     * @return array{0: list<array<string, mixed>>, 1: float} lines and their subtotal
+     */
+    private function priceLines(array $sourcedLines): array
+    {
+        $products = Product::whereIn('id', collect($sourcedLines)->pluck('product_id'))
+            ->get()
+            ->keyBy('id');
+
+        $lines = [];
+        $subtotal = 0.0;
+
+        foreach ($sourcedLines as $line) {
+            $product = $products[$line['product_id']];
+            $unitPrice = (float) ($product->price ?: $product->cost_price ?: 0);
+            $discount = (float) $line['discount'];
+            $lineTotal = $unitPrice * (int) $line['quantity'] - $discount;
+
+            $lines[] = [
+                'product_id' => $product->id,
+                'quantity' => (int) $line['quantity'],
+                'unit_price' => $unitPrice,
+                'discount' => $discount,
+                'tax' => 0,
+                'description' => $line['description'],
+                // Not a column — carried alongside so the allocation can
+                // be written once the line has an id.
+                'source_warehouse_id' => (int) $line['warehouse_id'],
+            ];
+            $subtotal += $lineTotal;
+        }
+
+        return [$lines, $subtotal];
     }
 
     /**
