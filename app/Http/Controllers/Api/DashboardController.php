@@ -57,75 +57,7 @@ class DashboardController extends Controller
             
             [$revenueStatuses, $invoiceRevenue, $totalSales, $invoiceCounts, $invoiceStatusBreakdown, $paymentAmounts, $paymentCounts] = $this->invoiceAndPaymentStats();
 
-            $productCounts = [
-                'total' => Product::count(),
-                'active' => Product::where('is_active', 1)->count(),
-                'featured' => Product::where('is_featured', 1)->count(),
-                'in_stock' => Product::where('in_stock', 1)->count(),
-                'low_stock' => Product::whereColumn('stock_quantity', '<=', 'min_stock')->count(),
-            ];
-
-            $erpStats = [
-                'total_revenue' => (float) Invoice::whereIn('status', $revenueStatuses)->sum('total'),
-                'total_sales' => (float) Invoice::where('status', '!=', Invoice::STATUS_CANCELLED)->sum('total'),
-                'total_expenses' => (float) \App\Models\PurchaseReceiptItem::sum('total'),
-                'active_customers' => Customer::count(),
-                'pending_invoices' => Invoice::where('status', Invoice::STATUS_PENDING)->count(),
-                'monthly_revenue' => (float) Invoice::whereDate('created_at', '>=', $monthStart)
-                    ->whereIn('status', $revenueStatuses)
-                    ->sum('total'),
-                'monthly_sales' => (float) Invoice::whereDate('created_at', '>=', $monthStart)
-                    ->where('status', '!=', Invoice::STATUS_CANCELLED)
-                    ->sum('total'),
-            ];
-
-            $quoteCounts = [
-                'total' => Quote::count(),
-                'draft' => Quote::where('status', Quote::STATUS_DRAFT)->count(),
-                'sent' => Quote::where('status', Quote::STATUS_SENT)->count(),
-                'accepted' => Quote::where('status', Quote::STATUS_ACCEPTED)->count(),
-                'rejected' => Quote::where('status', Quote::STATUS_REJECTED)->count(),
-                'expired' => Quote::where('status', Quote::STATUS_EXPIRED)->count(),
-            ];
-
-            $salesOrderCounts = [
-                'total' => SalesOrder::count(),
-                'pending' => SalesOrder::where('status', SalesOrder::STATUS_PENDING)->count(),
-                'processing' => SalesOrder::where('status', SalesOrder::STATUS_PROCESSING)->count(),
-                'shipped' => SalesOrder::where('status', SalesOrder::STATUS_SHIPPED)->count(),
-                'delivered' => SalesOrder::where('status', SalesOrder::STATUS_DELIVERED)->count(),
-                'cancelled' => SalesOrder::where('status', SalesOrder::STATUS_CANCELLED)->count(),
-            ];
-
-            $productionCounts = [
-                'total' => ProductionOrder::count(),
-                'pending' => ProductionOrder::where('status', ProductionOrder::STATUS_PENDING)->count(),
-                'in_progress' => ProductionOrder::where('status', ProductionOrder::STATUS_IN_PROGRESS)->count(),
-                'completed' => ProductionOrder::where('status', ProductionOrder::STATUS_COMPLETED)->count(),
-                'cancelled' => ProductionOrder::where('status', ProductionOrder::STATUS_CANCELLED)->count(),
-            ];
-
-            $payrollCounts = [
-                'total' => Payroll::count(),
-                'pending' => Payroll::where('status', Payroll::STATUS_PENDING)->count(),
-                'processed' => Payroll::where('status', Payroll::STATUS_PROCESSED)->count(),
-                'paid' => Payroll::where('status', Payroll::STATUS_PAID)->count(),
-            ];
-
-            $purchaseReceiptCounts = [
-                'total' => PurchaseReceipt::count(),
-            ];
-
-            $customerCounts = [
-                'total' => Customer::count(),
-            ];
-
-            $inquiryCounts = [
-                'total' => Inquiry::count(),
-                'new' => Inquiry::where('status', Inquiry::STATUS_NEW)->count(),
-                'read' => Inquiry::where('status', Inquiry::STATUS_READ)->count(),
-                'replied' => Inquiry::where('status', Inquiry::STATUS_REPLIED)->count(),
-            ];
+            [$productCounts, $erpStats, $quoteCounts, $salesOrderCounts, $productionCounts, $payrollCounts, $purchaseReceiptCounts, $customerCounts, $inquiryCounts] = $this->entityCounts($revenueStatuses, $monthStart);
 
             $recentInvoices = Invoice::with('customer')
                 ->orderByDesc('created_at')
@@ -196,69 +128,7 @@ class DashboardController extends Controller
                     ];
                 });
 
-            $wmsStats = [
-                'warehouses_count' => Warehouse::count(),
-                'bins_count' => WarehouseBin::count(),
-                'picking_pending' => PickingList::where('status', PickingList::STATUS_PENDING)->count(),
-                'picking_in_progress' => PickingList::where('status', PickingList::STATUS_IN_PROGRESS)->count(),
-                'picking_completed' => PickingList::where('status', PickingList::STATUS_COMPLETED)->count(),
-                'packing_pending' => PackingList::where('status', PackingList::STATUS_PENDING)->count(),
-                'packing_in_progress' => PackingList::where('status', PackingList::STATUS_IN_PROGRESS)->count(),
-                'packing_completed' => PackingList::where('status', PackingList::STATUS_COMPLETED)->count(),
-                'cycle_counts_count' => CycleCount::count(),
-                'cycle_counts_completed' => CycleCount::where('status', CycleCount::STATUS_COMPLETED)->count(),
-            ];
-
-            $rmaStats = [
-                'total' => RmaRequest::count(),
-                'pending' => RmaRequest::where('status', RmaRequest::STATUS_PENDING)->count(),
-                'approved' => RmaRequest::where('status', RmaRequest::STATUS_APPROVED)->count(),
-                'rejected' => RmaRequest::where('status', RmaRequest::STATUS_REJECTED)->count(),
-                'completed' => RmaRequest::where('status', RmaRequest::STATUS_COMPLETED)->count(),
-                'refunded_amount' => (float) RmaRequest::where('status', RmaRequest::STATUS_COMPLETED)->sum('refund_amount'),
-            ];
-
-            $workflowStats = [
-                'total' => Workflow::count(),
-                'active' => Workflow::where('status', Workflow::STATUS_ACTIVE)->count(),
-                'inactive' => Workflow::where('status', Workflow::STATUS_INACTIVE)->count(),
-                'executions_total' => WorkflowExecution::count(),
-                'executions_completed' => WorkflowExecution::where('status', WorkflowExecution::STATUS_COMPLETED)->count(),
-                'executions_failed' => WorkflowExecution::where('status', WorkflowExecution::STATUS_FAILED)->count(),
-            ];
-
-            $notificationStats = [
-                'total' => Notification::count(),
-                'templates' => NotificationTemplate::count(),
-            ];
-
-            $auditStats = [
-                'total' => AuditLog::count(),
-                'today' => AuditLog::whereDate('created_at', today())->count(),
-            ];
-
-            $recentAuditLogs = AuditLog::with('user')
-                ->orderByDesc('created_at')
-                ->take(5)
-                ->get()
-                ->map(function ($log) {
-                    return [
-                        'id' => $log->id,
-                        'user_name' => $log->user?->name ?? 'نظام',
-                        'action' => $log->action,
-                        'action_text' => $log->action_text,
-                        'module' => $log->module,
-                        'module_text' => $log->module_text,
-                        'description' => $log->description,
-                        'created_at' => $log->created_at?->toDateTimeString(),
-                    ];
-                });
-
-            $analyticsStats = [
-                'dashboards' => AnalyticsDashboard::count(),
-                'reports' => Report::count(),
-                'metrics' => AnalyticsMetric::count(),
-            ];
+            [$wmsStats, $rmaStats, $workflowStats, $notificationStats, $auditStats, $recentAuditLogs, $analyticsStats] = $this->operationsStats();
 
             return response()->json([
                 'success' => true,
@@ -308,6 +178,160 @@ class DashboardController extends Controller
                 'debug_line' => $e->getLine(),
             ], 500);
         }
+    }
+
+    /**
+     * Headline counts per module, plus the ERP revenue figures.
+     *
+     * @return list<array>
+     */
+    private function entityCounts(array $revenueStatuses, $monthStart): array
+    {
+        $productCounts = [
+            'total' => Product::count(),
+            'active' => Product::where('is_active', 1)->count(),
+            'featured' => Product::where('is_featured', 1)->count(),
+            'in_stock' => Product::where('in_stock', 1)->count(),
+            'low_stock' => Product::whereColumn('stock_quantity', '<=', 'min_stock')->count(),
+        ];
+
+        $erpStats = [
+            'total_revenue' => (float) Invoice::whereIn('status', $revenueStatuses)->sum('total'),
+            'total_sales' => (float) Invoice::where('status', '!=', Invoice::STATUS_CANCELLED)->sum('total'),
+            'total_expenses' => (float) \App\Models\PurchaseReceiptItem::sum('total'),
+            'active_customers' => Customer::count(),
+            'pending_invoices' => Invoice::where('status', Invoice::STATUS_PENDING)->count(),
+            'monthly_revenue' => (float) Invoice::whereDate('created_at', '>=', $monthStart)
+                ->whereIn('status', $revenueStatuses)
+                ->sum('total'),
+            'monthly_sales' => (float) Invoice::whereDate('created_at', '>=', $monthStart)
+                ->where('status', '!=', Invoice::STATUS_CANCELLED)
+                ->sum('total'),
+        ];
+
+        $quoteCounts = [
+            'total' => Quote::count(),
+            'draft' => Quote::where('status', Quote::STATUS_DRAFT)->count(),
+            'sent' => Quote::where('status', Quote::STATUS_SENT)->count(),
+            'accepted' => Quote::where('status', Quote::STATUS_ACCEPTED)->count(),
+            'rejected' => Quote::where('status', Quote::STATUS_REJECTED)->count(),
+            'expired' => Quote::where('status', Quote::STATUS_EXPIRED)->count(),
+        ];
+
+        $salesOrderCounts = [
+            'total' => SalesOrder::count(),
+            'pending' => SalesOrder::where('status', SalesOrder::STATUS_PENDING)->count(),
+            'processing' => SalesOrder::where('status', SalesOrder::STATUS_PROCESSING)->count(),
+            'shipped' => SalesOrder::where('status', SalesOrder::STATUS_SHIPPED)->count(),
+            'delivered' => SalesOrder::where('status', SalesOrder::STATUS_DELIVERED)->count(),
+            'cancelled' => SalesOrder::where('status', SalesOrder::STATUS_CANCELLED)->count(),
+        ];
+
+        $productionCounts = [
+            'total' => ProductionOrder::count(),
+            'pending' => ProductionOrder::where('status', ProductionOrder::STATUS_PENDING)->count(),
+            'in_progress' => ProductionOrder::where('status', ProductionOrder::STATUS_IN_PROGRESS)->count(),
+            'completed' => ProductionOrder::where('status', ProductionOrder::STATUS_COMPLETED)->count(),
+            'cancelled' => ProductionOrder::where('status', ProductionOrder::STATUS_CANCELLED)->count(),
+        ];
+
+        $payrollCounts = [
+            'total' => Payroll::count(),
+            'pending' => Payroll::where('status', Payroll::STATUS_PENDING)->count(),
+            'processed' => Payroll::where('status', Payroll::STATUS_PROCESSED)->count(),
+            'paid' => Payroll::where('status', Payroll::STATUS_PAID)->count(),
+        ];
+
+        $purchaseReceiptCounts = [
+            'total' => PurchaseReceipt::count(),
+        ];
+
+        $customerCounts = [
+            'total' => Customer::count(),
+        ];
+
+        $inquiryCounts = [
+            'total' => Inquiry::count(),
+            'new' => Inquiry::where('status', Inquiry::STATUS_NEW)->count(),
+            'read' => Inquiry::where('status', Inquiry::STATUS_READ)->count(),
+            'replied' => Inquiry::where('status', Inquiry::STATUS_REPLIED)->count(),
+        ];
+
+        return [$productCounts, $erpStats, $quoteCounts, $salesOrderCounts, $productionCounts, $payrollCounts, $purchaseReceiptCounts, $customerCounts, $inquiryCounts];
+    }
+
+    /**
+     * Warehouse, returns, workflow, notification, audit and analytics figures.
+     *
+     * @return list<mixed>
+     */
+    private function operationsStats(): array
+    {
+        $wmsStats = [
+            'warehouses_count' => Warehouse::count(),
+            'bins_count' => WarehouseBin::count(),
+            'picking_pending' => PickingList::where('status', PickingList::STATUS_PENDING)->count(),
+            'picking_in_progress' => PickingList::where('status', PickingList::STATUS_IN_PROGRESS)->count(),
+            'picking_completed' => PickingList::where('status', PickingList::STATUS_COMPLETED)->count(),
+            'packing_pending' => PackingList::where('status', PackingList::STATUS_PENDING)->count(),
+            'packing_in_progress' => PackingList::where('status', PackingList::STATUS_IN_PROGRESS)->count(),
+            'packing_completed' => PackingList::where('status', PackingList::STATUS_COMPLETED)->count(),
+            'cycle_counts_count' => CycleCount::count(),
+            'cycle_counts_completed' => CycleCount::where('status', CycleCount::STATUS_COMPLETED)->count(),
+        ];
+
+        $rmaStats = [
+            'total' => RmaRequest::count(),
+            'pending' => RmaRequest::where('status', RmaRequest::STATUS_PENDING)->count(),
+            'approved' => RmaRequest::where('status', RmaRequest::STATUS_APPROVED)->count(),
+            'rejected' => RmaRequest::where('status', RmaRequest::STATUS_REJECTED)->count(),
+            'completed' => RmaRequest::where('status', RmaRequest::STATUS_COMPLETED)->count(),
+            'refunded_amount' => (float) RmaRequest::where('status', RmaRequest::STATUS_COMPLETED)->sum('refund_amount'),
+        ];
+
+        $workflowStats = [
+            'total' => Workflow::count(),
+            'active' => Workflow::where('status', Workflow::STATUS_ACTIVE)->count(),
+            'inactive' => Workflow::where('status', Workflow::STATUS_INACTIVE)->count(),
+            'executions_total' => WorkflowExecution::count(),
+            'executions_completed' => WorkflowExecution::where('status', WorkflowExecution::STATUS_COMPLETED)->count(),
+            'executions_failed' => WorkflowExecution::where('status', WorkflowExecution::STATUS_FAILED)->count(),
+        ];
+
+        $notificationStats = [
+            'total' => Notification::count(),
+            'templates' => NotificationTemplate::count(),
+        ];
+
+        $auditStats = [
+            'total' => AuditLog::count(),
+            'today' => AuditLog::whereDate('created_at', today())->count(),
+        ];
+
+        $recentAuditLogs = AuditLog::with('user')
+            ->orderByDesc('created_at')
+            ->take(5)
+            ->get()
+            ->map(function ($log) {
+                return [
+                    'id' => $log->id,
+                    'user_name' => $log->user?->name ?? 'نظام',
+                    'action' => $log->action,
+                    'action_text' => $log->action_text,
+                    'module' => $log->module,
+                    'module_text' => $log->module_text,
+                    'description' => $log->description,
+                    'created_at' => $log->created_at?->toDateTimeString(),
+                ];
+            });
+
+        $analyticsStats = [
+            'dashboards' => AnalyticsDashboard::count(),
+            'reports' => Report::count(),
+            'metrics' => AnalyticsMetric::count(),
+        ];
+
+        return [$wmsStats, $rmaStats, $workflowStats, $notificationStats, $auditStats, $recentAuditLogs, $analyticsStats];
     }
 
     /**

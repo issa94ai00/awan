@@ -583,63 +583,7 @@ class SalesOrderController extends Controller
         // that the stage is supposed to trigger.
         unset($validated['status']);
 
-        $headerKeys = [
-            'customer_id',
-            'assigned_employee_id',
-            'fulfillment_warehouse_id',
-            'fulfillment_type',
-            'order_date',
-            'expected_delivery',
-            'discount',
-            'tax',
-            'shipping_cost',
-            'shipping_address',
-            'discount_percent',
-            'tax_percent',
-            'notes',
-        ];
-
-        foreach ($headerKeys as $key) {
-            if (! array_key_exists($key, $validated)) {
-                $validated[$key] = $salesOrder->{$key};
-            }
-        }
-
-        // Reassignment is a real back-office action — an order moves to whoever
-        // is covering the round. A request that leaves the field out keeps the
-        // current owner rather than clearing it, so editing a delivery address
-        // cannot silently orphan the order.
-        // A rep cannot hand an order to someone else (back-office only).
-        $hasAssignedEmployeeInput = $request->has('assigned_employee_id') && ! $scoped;
-        if (! $hasAssignedEmployeeInput) {
-            $validated['assigned_employee_id'] = $salesOrder->assigned_employee_id;
-        }
-
-        if ($validated['customer_id'] === null) {
-            $validated['customer_id'] = $salesOrder->customer_id;
-        }
-
-        $hasWarehouseInput = $request->has('fulfillment_warehouse_id');
-
-        // A sales rep may not move the order to another warehouse (or re-plan
-        // its lines across warehouses); it keeps the one it has.
-        if ($request->user()?->isSalesRep()) {
-            $validated['fulfillment_warehouse_id'] = $salesOrder->fulfillment_warehouse_id;
-            $hasWarehouseInput = true;
-            $this->dropRepSourcing($request);
-        }
-
-        // Past confirmation only the lines and their pricing change here. Who
-        // the order is for and whose it is sit on the invoice and the ledger,
-        // and how it is fulfilled and charged for delivery have their own
-        // endpoint; the lines are re-sourced by the amendment itself.
-        if ($amending) {
-            foreach (['customer_id', 'assigned_employee_id', 'fulfillment_warehouse_id', 'fulfillment_type', 'shipping_cost'] as $key) {
-                $validated[$key] = $salesOrder->{$key};
-            }
-            $hasWarehouseInput = true;
-            $this->dropRepSourcing($request);
-        }
+        [$validated, $hasWarehouseInput] = $this->resolveUpdateHeader($validated, $request, $salesOrder, $scoped, $amending);
 
         $lineItems = $this->buildLineItems($request->items);
         $subtotal = collect($lineItems)->sum(
@@ -726,6 +670,76 @@ class SalesOrderController extends Controller
                 'current' => (int) $salesOrder->revision,
             ] : null,
         ]);
+    }
+
+    /**
+     * Fills header fields the request left out from the stored order, and applies
+     * who may change what: reps cannot reassign or re-warehouse, and an amendment
+     * past confirmation only touches the lines and their pricing.
+     *
+     * @return array{0: array<string, mixed>, 1: bool} the header and whether a warehouse was decided
+     */
+    private function resolveUpdateHeader(array $validated, Request $request, SalesOrder $salesOrder, bool $scoped, bool $amending): array
+    {
+        $headerKeys = [
+            'customer_id',
+            'assigned_employee_id',
+            'fulfillment_warehouse_id',
+            'fulfillment_type',
+            'order_date',
+            'expected_delivery',
+            'discount',
+            'tax',
+            'shipping_cost',
+            'shipping_address',
+            'discount_percent',
+            'tax_percent',
+            'notes',
+        ];
+
+        foreach ($headerKeys as $key) {
+            if (! array_key_exists($key, $validated)) {
+                $validated[$key] = $salesOrder->{$key};
+            }
+        }
+
+        // Reassignment is a real back-office action — an order moves to whoever
+        // is covering the round. A request that leaves the field out keeps the
+        // current owner rather than clearing it, so editing a delivery address
+        // cannot silently orphan the order.
+        // A rep cannot hand an order to someone else (back-office only).
+        $hasAssignedEmployeeInput = $request->has('assigned_employee_id') && ! $scoped;
+        if (! $hasAssignedEmployeeInput) {
+            $validated['assigned_employee_id'] = $salesOrder->assigned_employee_id;
+        }
+
+        if ($validated['customer_id'] === null) {
+            $validated['customer_id'] = $salesOrder->customer_id;
+        }
+
+        $hasWarehouseInput = $request->has('fulfillment_warehouse_id');
+
+        // A sales rep may not move the order to another warehouse (or re-plan
+        // its lines across warehouses); it keeps the one it has.
+        if ($request->user()?->isSalesRep()) {
+            $validated['fulfillment_warehouse_id'] = $salesOrder->fulfillment_warehouse_id;
+            $hasWarehouseInput = true;
+            $this->dropRepSourcing($request);
+        }
+
+        // Past confirmation only the lines and their pricing change here. Who
+        // the order is for and whose it is sit on the invoice and the ledger,
+        // and how it is fulfilled and charged for delivery have their own
+        // endpoint; the lines are re-sourced by the amendment itself.
+        if ($amending) {
+            foreach (['customer_id', 'assigned_employee_id', 'fulfillment_warehouse_id', 'fulfillment_type', 'shipping_cost'] as $key) {
+                $validated[$key] = $salesOrder->{$key};
+            }
+            $hasWarehouseInput = true;
+            $this->dropRepSourcing($request);
+        }
+
+        return [$validated, $hasWarehouseInput];
     }
 
     /** Validation rules for editing an order. @return array<string, mixed> */
