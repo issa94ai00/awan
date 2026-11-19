@@ -605,18 +605,7 @@ class SalesOrderController extends Controller
             }
         }
 
-        $validated['total'] = round($subtotal - $validated['discount'] + $validated['tax'] + (float) ($validated['shipping_cost'] ?? $salesOrder->shipping_cost ?? 0), 2);
-
-        // Derived from whoever the order now belongs to — which may be a rep it
-        // was just reassigned to, so the warehouse follows the round rather than
-        // staying with the person who happened to raise it.
-        if (! $hasWarehouseInput && ! empty($validated['assigned_employee_id']) && (int) $validated['assigned_employee_id'] !== (int) $salesOrder->assigned_employee_id) {
-            $validated['fulfillment_warehouse_id'] = Employee::find($validated['assigned_employee_id'])?->warehouse_id ?? $salesOrder->fulfillment_warehouse_id;
-        }
-
-        if (! $hasWarehouseInput && empty($validated['fulfillment_warehouse_id']) && ! empty($salesOrder->fulfillment_warehouse_id)) {
-            $validated['fulfillment_warehouse_id'] = $salesOrder->fulfillment_warehouse_id;
-        }
+        $validated = $this->settleUpdateFigures($validated, $salesOrder, $subtotal, $hasWarehouseInput);
 
         $createdExpenses = [];
         $revision = null;
@@ -670,6 +659,30 @@ class SalesOrderController extends Controller
                 'current' => (int) $salesOrder->revision,
             ] : null,
         ]);
+    }
+
+    /**
+     * Fixes the order total (delivery included) and keeps the fulfilment warehouse
+     * following the assigned employee unless one was named.
+     *
+     * @return array<string, mixed>
+     */
+    private function settleUpdateFigures(array $validated, SalesOrder $salesOrder, $subtotal, bool $hasWarehouseInput): array
+    {
+        $validated['total'] = round($subtotal - $validated['discount'] + $validated['tax'] + (float) ($validated['shipping_cost'] ?? $salesOrder->shipping_cost ?? 0), 2);
+
+        // Derived from whoever the order now belongs to — which may be a rep it
+        // was just reassigned to, so the warehouse follows the round rather than
+        // staying with the person who happened to raise it.
+        if (! $hasWarehouseInput && ! empty($validated['assigned_employee_id']) && (int) $validated['assigned_employee_id'] !== (int) $salesOrder->assigned_employee_id) {
+            $validated['fulfillment_warehouse_id'] = Employee::find($validated['assigned_employee_id'])?->warehouse_id ?? $salesOrder->fulfillment_warehouse_id;
+        }
+
+        if (! $hasWarehouseInput && empty($validated['fulfillment_warehouse_id']) && ! empty($salesOrder->fulfillment_warehouse_id)) {
+            $validated['fulfillment_warehouse_id'] = $salesOrder->fulfillment_warehouse_id;
+        }
+
+        return $validated;
     }
 
     /**

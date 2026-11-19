@@ -192,84 +192,11 @@ class ImportEgyptCatalog extends Command
         DB::beginTransaction();
         try {
             foreach ($data as $item) {
-                $catSlug = $item['category_slug'] ?? 'egyptian-products';
-                $catId = $categories[$catSlug] ?? null;
-
-                $nameAr = trim($item['name_ar']);
-                $nameEn = trim($item['name_en'] ?? '') ?: null;
-                $price = (float) ($item['price'] ?? 0);
-                $costPrice = round($price * 0.85, 2);
-
-                $sku = $this->uniqueProductSku($item['sku'] ?? null);
-                $slug = ProductIdentifiers::uniqueSlug($nameAr, $nameEn);
-
-                $product = Product::create([
-                    'category_id' => $catId,
-                    'name_ar' => $nameAr,
-                    'name_en' => $nameEn,
-                    'slug' => $slug,
-                    'description_ar' => $item['description_ar'] ?? null,
-                    'description_en' => $nameEn,
-                    'price' => $price,
-                    'cost_price' => $costPrice,
-                    'unit' => $item['unit'] ?? 'قطعة',
-                    'stock_quantity' => (int) ($item['packaging'] ?? 50) ?: 50,
-                    'brand' => $item['brand'] ?? 'مصري',
-                    'model' => $item['model'] ?? null,
-                    'sku' => $sku,
-                    'image_main' => $item['image_main'] ?? null,
-                    'show_price' => true,
-                    'in_stock' => true,
-                    'is_active' => true,
-                    'sort_order' => $createdProducts + 1,
-                ]);
+                [$product, $sku] = $this->createProduct($item, $categories, $warehouse, $createdProducts + 1);
 
                 $createdProducts++;
 
-                // Record stock in warehouse_inventory
-                if ($warehouse) {
-                    WarehouseInventory::updateOrCreate(
-                        ['warehouse_id' => $warehouse->id, 'product_id' => $product->id, 'product_variant_id' => null],
-                        [
-                            'quantity' => $product->stock_quantity,
-                            'available_quantity' => $product->stock_quantity,
-                            'cost_basis' => 'FIFO',
-                        ]
-                    );
-                }
-
-                // Create ProductVariants
-                $variantsData = $item['variants'] ?? [];
-                foreach ($variantsData as $v) {
-                    $vSku = $this->uniqueVariantSku($v['sku'] ?? $sku);
-                    $vPrice = (float) ($v['price'] ?? $price);
-                    $vCost = round($vPrice * 0.85, 2);
-
-                    $variant = ProductVariant::create([
-                        'product_id' => $product->id,
-                        'sku' => $vSku,
-                        'price' => $vPrice,
-                        'cost_price' => $vCost,
-                        'stock_quantity' => (int) ($v['stock_quantity'] ?? 50),
-                        'size' => $v['size'] ?? null,
-                        'color' => $v['color'] ?? null,
-                        'material' => $v['material'] ?? null,
-                        'specs' => ProductVariant::normaliseSpecs($v['specs'] ?? null),
-                    ]);
-
-                    $createdVariants++;
-
-                    if ($warehouse) {
-                        WarehouseInventory::updateOrCreate(
-                            ['warehouse_id' => $warehouse->id, 'product_id' => $product->id, 'product_variant_id' => $variant->id],
-                            [
-                                'quantity' => $variant->stock_quantity,
-                                'available_quantity' => $variant->stock_quantity,
-                                'cost_basis' => 'FIFO',
-                            ]
-                        );
-                    }
-                }
+                $createdVariants += $this->createVariants($product, $item, $sku, $warehouse);
 
                 $bar->advance();
             }
@@ -290,6 +217,106 @@ class ImportEgyptCatalog extends Command
         $this->info("  - فئات المنتجات المصرية: " . count($categories));
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Creates one product and its warehouse stock row.
+     *
+     * @return array{0: Product, 1: string} the product and its resolved SKU
+     */
+    private function createProduct(array $item, array $categories, ?Warehouse $warehouse, int $sortOrder): array
+    {
+        $catSlug = $item['category_slug'] ?? 'egyptian-products';
+        $catId = $categories[$catSlug] ?? null;
+
+        $nameAr = trim($item['name_ar']);
+        $nameEn = trim($item['name_en'] ?? '') ?: null;
+        $price = (float) ($item['price'] ?? 0);
+        $costPrice = round($price * 0.85, 2);
+
+        $sku = $this->uniqueProductSku($item['sku'] ?? null);
+        $slug = ProductIdentifiers::uniqueSlug($nameAr, $nameEn);
+
+        $product = Product::create([
+            'category_id' => $catId,
+            'name_ar' => $nameAr,
+            'name_en' => $nameEn,
+            'slug' => $slug,
+            'description_ar' => $item['description_ar'] ?? null,
+            'description_en' => $nameEn,
+            'price' => $price,
+            'cost_price' => $costPrice,
+            'unit' => $item['unit'] ?? 'قطعة',
+            'stock_quantity' => (int) ($item['packaging'] ?? 50) ?: 50,
+            'brand' => $item['brand'] ?? 'مصري',
+            'model' => $item['model'] ?? null,
+            'sku' => $sku,
+            'image_main' => $item['image_main'] ?? null,
+            'show_price' => true,
+            'in_stock' => true,
+            'is_active' => true,
+            'sort_order' => $sortOrder,
+        ]);
+
+        // Record stock in warehouse_inventory
+        if ($warehouse) {
+            WarehouseInventory::updateOrCreate(
+                ['warehouse_id' => $warehouse->id, 'product_id' => $product->id, 'product_variant_id' => null],
+                [
+                    'quantity' => $product->stock_quantity,
+                    'available_quantity' => $product->stock_quantity,
+                    'cost_basis' => 'FIFO',
+                ]
+            );
+        }
+
+        return [$product, $sku];
+    }
+
+    /**
+     * Creates a product's variants and stocks each into the warehouse.
+     *
+     * @return int number of variants created
+     */
+    private function createVariants(Product $product, array $item, string $sku, ?Warehouse $warehouse): int
+    {
+        $price = (float) ($item['price'] ?? 0);
+        $created = 0;
+
+        // Create ProductVariants
+        $variantsData = $item['variants'] ?? [];
+        foreach ($variantsData as $v) {
+            $vSku = $this->uniqueVariantSku($v['sku'] ?? $sku);
+            $vPrice = (float) ($v['price'] ?? $price);
+            $vCost = round($vPrice * 0.85, 2);
+
+            $variant = ProductVariant::create([
+                'product_id' => $product->id,
+                'sku' => $vSku,
+                'price' => $vPrice,
+                'cost_price' => $vCost,
+                'stock_quantity' => (int) ($v['stock_quantity'] ?? 50),
+                'size' => $v['size'] ?? null,
+                'color' => $v['color'] ?? null,
+                'material' => $v['material'] ?? null,
+                'specs' => ProductVariant::normaliseSpecs($v['specs'] ?? null),
+            ]);
+
+            $created++;
+
+            if ($warehouse) {
+                WarehouseInventory::updateOrCreate(
+                    ['warehouse_id' => $warehouse->id, 'product_id' => $product->id, 'product_variant_id' => $variant->id],
+                    [
+                        'quantity' => $variant->stock_quantity,
+                        'available_quantity' => $variant->stock_quantity,
+                        'cost_basis' => 'FIFO',
+                    ]
+                );
+            }
+        }
+
+        return $created;
     }
 
     /**

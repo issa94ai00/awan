@@ -96,44 +96,9 @@ class ImportAyoubInventory extends Command
         $this->line("إجمالي عدد القطع: " . number_format($totalQty));
         $this->line("إجمالي التكلفة الإجمالية: " . number_format($totalCost, 2) . " $");
 
-        // Load all catalog products for matching and pre-process tokens
-        $allProducts = Product::all();
-        $processedProducts = $allProducts->map(function ($p) {
-            $cleanName = $this->cleanText($p->name_ar);
-            $cleanSku = $this->cleanText($p->sku);
-            $words = array_filter(explode(' ', $cleanName), fn ($w) => mb_strlen($w) > 1);
+        $processedProducts = $this->buildMatchIndex();
 
-            return [
-                'model' => $p,
-                'id' => $p->id,
-                'clean_name' => $cleanName,
-                'clean_sku' => $cleanSku,
-                'cost_price' => $p->cost_price !== null ? (float) $p->cost_price : null,
-                'price' => $p->price !== null ? (float) $p->price : null,
-                'words' => $words,
-            ];
-        });
-
-        $plan = [];
-        $matchedCount = 0;
-        $createdCount = 0;
-
-        foreach ($items as $item) {
-            $product = $this->resolveProduct($item, $processedProducts);
-            $action = $product ? 'match' : 'create';
-
-            if ($product) {
-                $matchedCount++;
-            } else {
-                $createdCount++;
-            }
-
-            $plan[] = [
-                'item' => $item,
-                'product' => $product,
-                'action' => $action,
-            ];
-        }
+        [$plan, $matchedCount, $createdCount] = $this->planImport($items, $processedProducts);
 
         $this->newLine();
         $this->table(
@@ -161,6 +126,78 @@ class ImportAyoubInventory extends Command
         $bar = $this->output->createProgressBar(count($plan));
         $bar->start();
 
+        [$stockedCount, $unitsStocked] = $this->applyPlan($plan, $warehouse, $inventory, $bar);
+
+        $bar->finish();
+        $this->newLine(2);
+        $this->info(" اكتمل بنجاح إدخال مخزون مستودع {$warehouse->name}!");
+        $this->line(" عدد المنتجات التي تم إدخال مخزونها: {$stockedCount}");
+        $this->line(" إجمالي الوحدات المستلمة: " . number_format($unitsStocked));
+        $this->line(" إجمالي القيمة بالتكلفة: " . number_format($totalCost, 2) . " $");
+
+        return self::SUCCESS;
+    }
+
+    /** Every catalogue product with its cleaned name, SKU and tokens, for matching. */
+    private function buildMatchIndex()
+    {
+        // Load all catalog products for matching and pre-process tokens
+        return Product::all()->map(function ($p) {
+            $cleanName = $this->cleanText($p->name_ar);
+            $cleanSku = $this->cleanText($p->sku);
+            $words = array_filter(explode(' ', $cleanName), fn ($w) => mb_strlen($w) > 1);
+
+            return [
+                'model' => $p,
+                'id' => $p->id,
+                'clean_name' => $cleanName,
+                'clean_sku' => $cleanSku,
+                'cost_price' => $p->cost_price !== null ? (float) $p->cost_price : null,
+                'price' => $p->price !== null ? (float) $p->price : null,
+                'words' => $words,
+            ];
+        });
+    }
+
+    /**
+     * Matches every row to an existing product or marks it for creation.
+     *
+     * @return array{0: list<array<string, mixed>>, 1: int, 2: int} plan, matched and to-create counts
+     */
+    private function planImport(array $items, $processedProducts): array
+    {
+        $plan = [];
+        $matchedCount = 0;
+        $createdCount = 0;
+
+        foreach ($items as $item) {
+            $product = $this->resolveProduct($item, $processedProducts);
+            $action = $product ? 'match' : 'create';
+
+            if ($product) {
+                $matchedCount++;
+            } else {
+                $createdCount++;
+            }
+
+            $plan[] = [
+                'item' => $item,
+                'product' => $product,
+                'action' => $action,
+            ];
+        }
+
+        return [$plan, $matchedCount, $createdCount];
+    }
+
+    /**
+     * Creates missing products and receives every row's quantity into the warehouse,
+     * in one transaction.
+     *
+     * @return array{0: int, 1: int} products stocked and units received
+     */
+    private function applyPlan(array $plan, Warehouse $warehouse, InventoryService $inventory, $bar): array
+    {
         $stockedCount = 0;
         $unitsStocked = 0;
 
@@ -205,14 +242,7 @@ class ImportAyoubInventory extends Command
             }
         });
 
-        $bar->finish();
-        $this->newLine(2);
-        $this->info(" اكتمل بنجاح إدخال مخزون مستودع {$warehouse->name}!");
-        $this->line(" عدد المنتجات التي تم إدخال مخزونها: {$stockedCount}");
-        $this->line(" إجمالي الوحدات المستلمة: " . number_format($unitsStocked));
-        $this->line(" إجمالي القيمة بالتكلفة: " . number_format($totalCost, 2) . " $");
-
-        return self::SUCCESS;
+        return [$stockedCount, $unitsStocked];
     }
 
     /**
@@ -303,6 +333,12 @@ PY;
             }
         }
 
+        return $this->tokenMatch($fullDesc, $size, $price, $processedProducts);
+    }
+
+    /** Best catalogue product by shared words, cost agreement and size; null below the confidence bar. */
+    private function tokenMatch(string $fullDesc, string $size, float $price, $processedProducts): ?Product
+    {
         $itemWords = array_filter(
             explode(' ', $fullDesc),
             fn ($w) => mb_strlen($w) > 1 && ! in_array($w, ['م', 'لون', 'يد', 'مع', 'بدون', 'نوع', 'انش', 'سم', 'cm', 'mm'])

@@ -23,6 +23,70 @@ class ResetWarehouseInventory extends Command
 
     public function handle(): int
     {
+        $openingHeaderIds = $this->showPlan();
+
+        $this->line('سيتم تصفير رصيد المخزون لجميع المنتجات والمتغيرات إلى 0.');
+        $this->line('سيتم تصفير حسابات المخزون ورأس المال المقابلة لها في دليل الحسابات.');
+        $this->newLine();
+        $this->info('لن يُمس: تعريفات المستودعات، المنتجات والتصنيفات، وبقية إعدادات النظام.');
+        $this->newLine();
+
+        if (! $this->option('force') && ! $this->confirm('هل أنت متأكد من رغبتك في متابعة تصفير المخزون؟', false)) {
+            $this->line('أُلغيت العملية.');
+
+            return self::SUCCESS;
+        }
+
+        // Automatic backup before proceeding
+        if (! $this->option('skip-backup')) {
+            $this->info('جاري أخذ نسخة احتياطية من قاعدة البيانات...');
+            $backupExitCode = Artisan::call('db:backup');
+            $this->line(trim(Artisan::output()));
+
+            if ($backupExitCode !== 0) {
+                $this->error('فشل إنشاء النسخة الاحتياطية. تم إيقاف العملية للحفاظ على أمان البيانات.');
+
+                return self::FAILURE;
+            }
+        }
+
+        $this->info('جاري تصفير بيانات المخزون...');
+
+        $tablesToWipe = ['warehouse_inventory', 'stock_movements', 'inventory_cost_layers'];
+
+        $this->wipeInventory($tablesToWipe, $openingHeaderIds);
+
+        // Reset auto increments outside transaction
+        $this->resetAutoIncrements(array_merge($tablesToWipe, ['journal_entry_lines', 'journal_entry_headers']));
+
+        // Clear application cache
+        Cache::flush();
+        $this->info('تم مسح الذاكرة المؤقتة (Cache).');
+
+        $this->newLine();
+        $this->info('✓ تم تصفير بيانات مخزون المستودعات بالكامل بنجاح.');
+        $this->newLine();
+
+        // Run integrity checks
+        $this->line('التحقق من سلامة المخزون:');
+        Artisan::call('inventory:check');
+        $this->line(trim(Artisan::output()));
+
+        $this->newLine();
+        $this->line('التحقق من سلامة القيود المحاسبية:');
+        Artisan::call('accounting:check');
+        $this->line(trim(Artisan::output()));
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * Prints what the reset will delete.
+     *
+     * @return list<int> ids of the inventory opening-balance journal entries
+     */
+    private function showPlan(): array
+    {
         $wiCount = Schema::hasTable('warehouse_inventory') ? DB::table('warehouse_inventory')->count() : 0;
         $smCount = Schema::hasTable('stock_movements') ? DB::table('stock_movements')->count() : 0;
         $clCount = Schema::hasTable('inventory_cost_layers') ? DB::table('inventory_cost_layers')->count() : 0;
@@ -54,35 +118,49 @@ class ResetWarehouseInventory extends Command
             ]
         );
 
-        $this->line('سيتم تصفير رصيد المخزون لجميع المنتجات والمتغيرات إلى 0.');
-        $this->line('سيتم تصفير حسابات المخزون ورأس المال المقابلة لها في دليل الحسابات.');
-        $this->newLine();
-        $this->info('لن يُمس: تعريفات المستودعات، المنتجات والتصنيفات، وبقية إعدادات النظام.');
-        $this->newLine();
+        return $openingHeaderIds;
+    }
 
-        if (! $this->option('force') && ! $this->confirm('هل أنت متأكد من رغبتك في متابعة تصفير المخزون؟', false)) {
-            $this->line('أُلغيت العملية.');
+    /** Zeroes ledger balances, or recomputes them from the entries that remain. */
+    private function rebalanceLedgerAccounts(): void
+    {
+        // 4. Zero the balances of inventory accounts and capital
+        if (Schema::hasTable('ledger_accounts')) {
+            // If no other journal entries exist, all ledger account balances should be 0
+            $hasOtherEntries = DB::table('journal_entry_headers')
+                ->whereNull('deleted_at')
+                ->whereNotIn('status', ['draft', 'pending', 'void', 'cancelled'])
+                ->exists();
 
-            return self::SUCCESS;
-        }
+            if (! $hasOtherEntries) {
+                DB::table('ledger_accounts')->update(['balance' => 0, 'opening_balance' => 0]);
+            } else {
+                // Recalculate each account from remaining journal entries
+                $sums = DB::table('journal_entry_lines as l')
+                    ->join('journal_entry_headers as h', 'h.id', '=', 'l.journal_entry_header_id')
+                    ->whereNull('h.deleted_at')
+                    ->whereNotIn('h.status', ['draft', 'pending', 'void', 'cancelled'])
+                    ->groupBy('l.account_id')
+                    ->selectRaw('l.account_id, COALESCE(SUM(l.debit),0) d, COALESCE(SUM(l.credit),0) c')
+                    ->get()
+                    ->keyBy('account_id');
 
-        // Automatic backup before proceeding
-        if (! $this->option('skip-backup')) {
-            $this->info('جاري أخذ نسخة احتياطية من قاعدة البيانات...');
-            $backupExitCode = Artisan::call('db:backup');
-            $this->line(trim(Artisan::output()));
-
-            if ($backupExitCode !== 0) {
-                $this->error('فشل إنشاء النسخة الاحتياطية. تم إيقاف العملية للحفاظ على أمان البيانات.');
-
-                return self::FAILURE;
+                foreach (LedgerAccount::all() as $account) {
+                    $row = $sums->get($account->id);
+                    $derived = round(LedgerAccount::signedDelta(
+                        $account->type,
+                        (float) ($row->d ?? 0),
+                        (float) ($row->c ?? 0)
+                    ), 2);
+                    $account->update(['balance' => $derived]);
+                }
             }
         }
+    }
 
-        $this->info('جاري تصفير بيانات المخزون...');
-
-        $tablesToWipe = ['warehouse_inventory', 'stock_movements', 'inventory_cost_layers'];
-
+    /** Deletes inventory records and zeroes stock inside one transaction. */
+    private function wipeInventory(array $tablesToWipe, array $openingHeaderIds): void
+    {
         DB::transaction(function () use ($tablesToWipe, $openingHeaderIds) {
             $driver = DB::getDriverName();
             if ($driver === 'mysql') {
@@ -111,66 +189,12 @@ class ResetWarehouseInventory extends Command
                 DB::table('journal_entry_headers')->whereIn('id', $openingHeaderIds)->delete();
             }
 
-            // 4. Zero the balances of inventory accounts and capital
-            if (Schema::hasTable('ledger_accounts')) {
-                // If no other journal entries exist, all ledger account balances should be 0
-                $hasOtherEntries = DB::table('journal_entry_headers')
-                    ->whereNull('deleted_at')
-                    ->whereNotIn('status', ['draft', 'pending', 'void', 'cancelled'])
-                    ->exists();
-
-                if (! $hasOtherEntries) {
-                    DB::table('ledger_accounts')->update(['balance' => 0, 'opening_balance' => 0]);
-                } else {
-                    // Recalculate each account from remaining journal entries
-                    $sums = DB::table('journal_entry_lines as l')
-                        ->join('journal_entry_headers as h', 'h.id', '=', 'l.journal_entry_header_id')
-                        ->whereNull('h.deleted_at')
-                        ->whereNotIn('h.status', ['draft', 'pending', 'void', 'cancelled'])
-                        ->groupBy('l.account_id')
-                        ->selectRaw('l.account_id, COALESCE(SUM(l.debit),0) d, COALESCE(SUM(l.credit),0) c')
-                        ->get()
-                        ->keyBy('account_id');
-
-                    foreach (LedgerAccount::all() as $account) {
-                        $row = $sums->get($account->id);
-                        $derived = round(LedgerAccount::signedDelta(
-                            $account->type,
-                            (float) ($row->d ?? 0),
-                            (float) ($row->c ?? 0)
-                        ), 2);
-                        $account->update(['balance' => $derived]);
-                    }
-                }
-            }
+            $this->rebalanceLedgerAccounts();
 
             if ($driver === 'mysql') {
                 DB::statement('SET FOREIGN_KEY_CHECKS=1');
             }
         });
-
-        // Reset auto increments outside transaction
-        $this->resetAutoIncrements(array_merge($tablesToWipe, ['journal_entry_lines', 'journal_entry_headers']));
-
-        // Clear application cache
-        Cache::flush();
-        $this->info('تم مسح الذاكرة المؤقتة (Cache).');
-
-        $this->newLine();
-        $this->info('✓ تم تصفير بيانات مخزون المستودعات بالكامل بنجاح.');
-        $this->newLine();
-
-        // Run integrity checks
-        $this->line('التحقق من سلامة المخزون:');
-        Artisan::call('inventory:check');
-        $this->line(trim(Artisan::output()));
-
-        $this->newLine();
-        $this->line('التحقق من سلامة القيود المحاسبية:');
-        Artisan::call('accounting:check');
-        $this->line(trim(Artisan::output()));
-
-        return self::SUCCESS;
     }
 
     /**
