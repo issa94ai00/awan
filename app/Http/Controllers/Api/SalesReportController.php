@@ -456,6 +456,59 @@ class SalesReportController extends Controller
             'exclude_cancelled' => 'nullable|boolean',
         ]);
 
+        $orders = $this->profitabilityQuery($request)->get();
+
+        $productSummary = $this->profitabilityRows($orders, $request->filled('product_id') ? (int) $request->product_id : null);
+
+        $grouped = $productSummary->groupBy(fn ($row) => ($row['product_id'].'-'.$row['warehouse_id']));
+
+        $finalProductSummary = $grouped->map(function ($rows) {
+            $revenue = $rows->sum('total_revenue');
+            $cost = $rows->sum('total_cost');
+            $profit = $revenue - $cost;
+
+            return [
+                'product_id' => $rows->first()['product_id'],
+                'product_name' => $rows->first()['product_name'],
+                'warehouse_id' => $rows->first()['warehouse_id'],
+                'warehouse_name' => $rows->first()['warehouse_name'],
+                'quantity' => $rows->sum('quantity'),
+                'total_revenue' => $revenue,
+                'total_cost' => $cost,
+                'gross_profit' => $profit,
+                'gross_margin' => $revenue > 0 ? round(($profit / $revenue) * 100, 2) : 0,
+            ];
+        })->values()->sortByDesc('gross_profit')->values();
+
+        $totalRevenue = (float) $finalProductSummary->sum('total_revenue');
+        $totalCost = (float) $finalProductSummary->sum('total_cost');
+        $grossProfit = $totalRevenue - $totalCost;
+
+        $summary = [
+            'total_revenue' => $totalRevenue,
+            'total_cost' => $totalCost,
+            'gross_profit' => (float) $grossProfit,
+            'gross_margin' => $totalRevenue > 0 ? round(($grossProfit / $totalRevenue) * 100, 2) : 0,
+            'product_count' => $finalProductSummary->count(),
+            // `product_count` counts product-and-warehouse rows; this, products.
+            'distinct_products' => $finalProductSummary->pluck('product_id')->unique()->count(),
+            'top_product' => $finalProductSummary->first() ?: null,
+            'lowest_product' => $finalProductSummary->last() ?: null,
+        ];
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Product profitability retrieved successfully',
+            'data' => [
+                'summary' => $summary,
+                'product_summary' => $finalProductSummary,
+            ],
+        ]);
+    }
+
+    /** The sales orders in scope for the profitability report, per the request's filters. */
+    private function profitabilityQuery(Request $request)
+    {
         $query = SalesOrder::query()->with(['items.product', 'items.allocations.warehouse', 'fulfillmentWarehouse']);
         $this->applyDateFilters($query, $request);
         $this->applyOwnSalesScope($query, $request);
@@ -487,9 +540,16 @@ class SalesReportController extends Controller
             $query->whereHas('items', fn ($items) => $items->where('product_id', $request->product_id));
         }
 
-        $orders = $query->get();
+        return $query;
+    }
 
-        $productSummary = $orders->flatMap(function ($order) {
+    /**
+     * One row per product and warehouse for each order line, revenue and cost
+     * split across the line's allocations.
+     */
+    private function profitabilityRows($orders, ?int $productId)
+    {
+        return $orders->flatMap(function ($order) {
             return $order->items->flatMap(function ($item) use ($order) {
                 $product = $item->product;
                 $unitRevenue = (float) $item->unit_price;
@@ -548,52 +608,7 @@ class SalesReportController extends Controller
                 ]];
             });
         })->filter(fn ($row) => (int) ($row['product_id'] ?? 0) > 0)
-            ->when($request->filled('product_id'), fn ($rows) => $rows->where('product_id', (int) $request->product_id));
-
-        $grouped = $productSummary->groupBy(fn ($row) => ($row['product_id'].'-'.$row['warehouse_id']));
-
-        $finalProductSummary = $grouped->map(function ($rows) {
-            $revenue = $rows->sum('total_revenue');
-            $cost = $rows->sum('total_cost');
-            $profit = $revenue - $cost;
-
-            return [
-                'product_id' => $rows->first()['product_id'],
-                'product_name' => $rows->first()['product_name'],
-                'warehouse_id' => $rows->first()['warehouse_id'],
-                'warehouse_name' => $rows->first()['warehouse_name'],
-                'quantity' => $rows->sum('quantity'),
-                'total_revenue' => $revenue,
-                'total_cost' => $cost,
-                'gross_profit' => $profit,
-                'gross_margin' => $revenue > 0 ? round(($profit / $revenue) * 100, 2) : 0,
-            ];
-        })->values()->sortByDesc('gross_profit')->values();
-
-        $totalRevenue = (float) $finalProductSummary->sum('total_revenue');
-        $totalCost = (float) $finalProductSummary->sum('total_cost');
-        $grossProfit = $totalRevenue - $totalCost;
-
-        $summary = [
-            'total_revenue' => $totalRevenue,
-            'total_cost' => $totalCost,
-            'gross_profit' => (float) $grossProfit,
-            'gross_margin' => $totalRevenue > 0 ? round(($grossProfit / $totalRevenue) * 100, 2) : 0,
-            'product_count' => $finalProductSummary->count(),
-            // `product_count` counts product-and-warehouse rows; this, products.
-            'distinct_products' => $finalProductSummary->pluck('product_id')->unique()->count(),
-            'top_product' => $finalProductSummary->first() ?: null,
-            'lowest_product' => $finalProductSummary->last() ?: null,
-        ];
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Product profitability retrieved successfully',
-            'data' => [
-                'summary' => $summary,
-                'product_summary' => $finalProductSummary,
-            ],
-        ]);
+            ->when($productId !== null, fn ($rows) => $rows->where('product_id', $productId));
     }
 
     public function inventoryDimensions(Request $request)

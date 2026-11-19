@@ -36,11 +36,101 @@ class SettingsController extends Controller
 
     public function update(Request $request)
     {
+        $request->validate($this->updateRules(), [
+            'regex' => 'البادئة تقبل حروفاً وأرقاماً فقط (بلا مسافات أو فواصل).',
+        ]);
+
+        // 1.234 cannot mean both one-point-two and twelve hundred.
+        $decimalMark = $request->input('settings.number_decimal_separator');
+        $groupingMark = $request->input('settings.number_thousands_separator');
+        if ($decimalMark && $decimalMark !== 'auto' && $decimalMark === $groupingMark) {
+            return response()->json([
+                'success' => false,
+                'message' => 'لا يمكن أن يكون فاصل الآلاف هو نفسه الفاصل العشري.',
+                'errors' => ['settings.number_thousands_separator' => ['لا يمكن أن يكون فاصل الآلاف هو نفسه الفاصل العشري.']],
+            ], 422);
+        }
+
+        $data = $request->input('settings', []);
+
+        $booleanFields = [
+            'show_product_price', 'show_site_name', 'email_notifications', 'sms_notifications', 'push_notifications', 'system_notifications',
+            'print_show_cover', 'print_show_qr', 'print_show_logo', 'print_show_contacts', 'print_show_images', 'print_show_sku',
+            'print_show_customer_info', 'print_show_payment_details', 'print_show_notes', 'print_show_amount_in_words', 'print_show_signatures', 'print_show_footer'
+        ];
+        foreach ($booleanFields as $field) {
+            if (! isset($data[$field])) {
+                $data[$field] = '0';
+            }
+        }
+
+        // Apply base-currency change through CurrencyService so the setting and
+        // the currencies.is_base row stay one fact, not two.
+        if (array_key_exists('default_currency', $data) && filled($data['default_currency'])) {
+            try {
+                $this->currencies->applyDefaultCurrency((string) $data['default_currency']);
+            } catch (RuntimeException $e) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $e->getMessage(),
+                ], 422);
+            }
+            unset($data['default_currency']);
+        }
+
+        // An emptied prefix field means "back to the default", not "no prefix".
+        foreach (DocumentNumbers::settingKeys() as $key) {
+            if (array_key_exists($key, $data) && trim((string) $data[$key]) === '') {
+                Setting::where('key', $key)->delete();
+                unset($data[$key]);
+            }
+        }
+
+        foreach ($data as $key => $value) {
+            $this->updateSettingWithAliases($key, $value);
+        }
+        NumberFormat::forget();
+        DocumentNumbers::forget();
+
+        // Replacing a logo used to leave the old file on disk for good — the
+        // setting row was simply pointed somewhere else. Each replaced path is
+        // swept once the new one is saved, and only if nothing else still
+        // names it (site_logo and logo are aliases for the same picture).
+        foreach (['logo', 'og_image', 'favicon', 'hero_bg', 'stamp_image', 'signature_image', 'header_banner', 'cover_image'] as $imageKey) {
+            if (! $request->hasFile($imageKey)) {
+                continue;
+            }
+
+            $replaced = get_setting($imageKey);
+
+            $path = $request->file($imageKey)->store('settings', 'public');
+            $this->updateSettingWithAliases($imageKey, $path);
+
+            ImageStore::forgetReplaced($replaced, $path);
+        }
+
+        $settings = Setting::all()->pluck('value', 'key')->toArray();
+        $settings['default_currency'] = $this->currencies->baseCode();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Settings updated',
+            'data' => [
+                'settings' => $settings,
+                'currencies' => $this->currencies->active()->values(),
+                'base_currency' => $this->currencies->baseCode(),
+            ],
+        ]);
+    }
+
+    /** Validation rules for the settings screen. @return array<string, mixed> */
+    private function updateRules(): array
+    {
         $availableCurrencies = $this->currencies->selectableCodes();
         $availableLanguages = ['ar', 'en', 'fr'];
         $availableTimezones = ['Asia/Damascus', 'Asia/Beirut', 'Asia/Baghdad', 'Asia/Riyadh', 'Asia/Dubai', 'Asia/Amman', 'Africa/Cairo', 'Europe/Istanbul', 'Europe/Paris', 'UTC'];
 
-        $validated = $request->validate([
+        return [
             'settings.site_name' => 'nullable|string|max:255',
             'settings.site_name_en' => 'nullable|string|max:255',
             'settings.site_tagline' => 'nullable|string|max:255',
@@ -182,91 +272,7 @@ class SettingsController extends Controller
             ...collect(DocumentNumbers::settingKeys())
                 ->mapWithKeys(fn (string $key) => ["settings.$key" => ['nullable', 'string', 'max:'.DocumentNumbers::MAX_LENGTH, 'regex:'.DocumentNumbers::PATTERN]])
                 ->all(),
-        ], [
-            'regex' => 'البادئة تقبل حروفاً وأرقاماً فقط (بلا مسافات أو فواصل).',
-        ]);
-
-        // 1.234 cannot mean both one-point-two and twelve hundred.
-        $decimalMark = $request->input('settings.number_decimal_separator');
-        $groupingMark = $request->input('settings.number_thousands_separator');
-        if ($decimalMark && $decimalMark !== 'auto' && $decimalMark === $groupingMark) {
-            return response()->json([
-                'success' => false,
-                'message' => 'لا يمكن أن يكون فاصل الآلاف هو نفسه الفاصل العشري.',
-                'errors' => ['settings.number_thousands_separator' => ['لا يمكن أن يكون فاصل الآلاف هو نفسه الفاصل العشري.']],
-            ], 422);
-        }
-
-        $data = $request->input('settings', []);
-
-        $booleanFields = [
-            'show_product_price', 'show_site_name', 'email_notifications', 'sms_notifications', 'push_notifications', 'system_notifications',
-            'print_show_cover', 'print_show_qr', 'print_show_logo', 'print_show_contacts', 'print_show_images', 'print_show_sku',
-            'print_show_customer_info', 'print_show_payment_details', 'print_show_notes', 'print_show_amount_in_words', 'print_show_signatures', 'print_show_footer'
         ];
-        foreach ($booleanFields as $field) {
-            if (! isset($data[$field])) {
-                $data[$field] = '0';
-            }
-        }
-
-        // Apply base-currency change through CurrencyService so the setting and
-        // the currencies.is_base row stay one fact, not two.
-        if (array_key_exists('default_currency', $data) && filled($data['default_currency'])) {
-            try {
-                $this->currencies->applyDefaultCurrency((string) $data['default_currency']);
-            } catch (RuntimeException $e) {
-                return response()->json([
-                    'success' => false,
-                    'message' => $e->getMessage(),
-                ], 422);
-            }
-            unset($data['default_currency']);
-        }
-
-        // An emptied prefix field means "back to the default", not "no prefix".
-        foreach (DocumentNumbers::settingKeys() as $key) {
-            if (array_key_exists($key, $data) && trim((string) $data[$key]) === '') {
-                Setting::where('key', $key)->delete();
-                unset($data[$key]);
-            }
-        }
-
-        foreach ($data as $key => $value) {
-            $this->updateSettingWithAliases($key, $value);
-        }
-        NumberFormat::forget();
-        DocumentNumbers::forget();
-
-        // Replacing a logo used to leave the old file on disk for good — the
-        // setting row was simply pointed somewhere else. Each replaced path is
-        // swept once the new one is saved, and only if nothing else still
-        // names it (site_logo and logo are aliases for the same picture).
-        foreach (['logo', 'og_image', 'favicon', 'hero_bg', 'stamp_image', 'signature_image', 'header_banner', 'cover_image'] as $imageKey) {
-            if (! $request->hasFile($imageKey)) {
-                continue;
-            }
-
-            $replaced = get_setting($imageKey);
-
-            $path = $request->file($imageKey)->store('settings', 'public');
-            $this->updateSettingWithAliases($imageKey, $path);
-
-            ImageStore::forgetReplaced($replaced, $path);
-        }
-
-        $settings = Setting::all()->pluck('value', 'key')->toArray();
-        $settings['default_currency'] = $this->currencies->baseCode();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Settings updated',
-            'data' => [
-                'settings' => $settings,
-                'currencies' => $this->currencies->active()->values(),
-                'base_currency' => $this->currencies->baseCode(),
-            ],
-        ]);
     }
 
     private function updateSettingWithAliases(string $key, mixed $value): void

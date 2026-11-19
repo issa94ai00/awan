@@ -96,18 +96,9 @@ class ProductController extends Controller
             $query->where('products.is_active', 1);
         }
 
-        // Filter by category_id (single value or array, for multi-classification
-        // filtering) or category_slug
-        if ($request->filled('category_id')) {
-            $query->whereIn('products.category_id', $this->categoryFilterIds((array) $request->category_id));
-        } elseif ($request->filled('category_slug')) {
-            $cat = Category::where('slug', $request->category_slug)->first();
-            if ($cat) {
-                $query->whereIn('products.category_id', $cat->descendantIds());
-            } else {
-                // No such category -> empty result
-                return $query->whereRaw('1 = 0');
-            }
+        if (! $this->applyCategoryFilter($query, $request)) {
+            // No such category -> empty result
+            return $query->whereRaw('1 = 0');
         }
 
         // Filter by featured. Admin screens also ask for the opposite
@@ -117,6 +108,38 @@ class ProductController extends Controller
         } elseif ($this->isAdminRequest($request) && $request->has('featured') && $request->filled('featured')) {
             $query->where('products.is_featured', 0);
         }
+
+        $this->applyStockFilters($query, $request);
+        $this->applyPriceFilter($query, $request, $expand);
+        $this->applySearch($query, $request, $expand);
+
+        return $query;
+    }
+
+
+    /** Narrows to the requested category (and its descendants); false when the slug names none. */
+    private function applyCategoryFilter(Builder $query, Request $request): bool
+    {
+        // Filter by category_id (single value or array, for multi-classification
+        // filtering) or category_slug
+        if ($request->filled('category_id')) {
+            $query->whereIn('products.category_id', $this->categoryFilterIds((array) $request->category_id));
+        } elseif ($request->filled('category_slug')) {
+            $cat = Category::where('slug', $request->category_slug)->first();
+            if ($cat) {
+                $query->whereIn('products.category_id', $cat->descendantIds());
+            } else {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /** Stock availability filters (flag for the storefront, counted quantity for admin). */
+    private function applyStockFilters(Builder $query, Request $request): void
+    {
+        $expand = $this->expandsVariants($request);
 
         // Filter by stock availability. The storefront means it the way its
         // card badge does, which also asks the listed size for stock.
@@ -137,7 +160,11 @@ class ProductController extends Controller
                 default => null,
             };
         }
+    }
 
+    /** Price range filter, accepting min_price/price_min and max_price/price_max. */
+    private function applyPriceFilter(Builder $query, Request $request, bool $expand): void
+    {
         // Price range (accept both min_price/price_min and max_price/price_max).
         // A variant row is filtered by the price it is listed at, a storefront
         // product by the lowest price it is sold at.
@@ -154,7 +181,11 @@ class ProductController extends Controller
         if ($maxPrice !== null && $maxPrice !== '') {
             $query->where($priceColumn, '<=', (float) $maxPrice);
         }
+    }
 
+    /** Name, brand, model, SKU and barcode search, plus variant codes where they apply. */
+    private function applySearch(Builder $query, Request $request, bool $expand): void
+    {
         // Search by name, brand, model, SKU or barcode — a purchasing screen
         // looking up a product by its code needs this as much as a shopper
         // searching by name does. With expanded variants a variant's own code
@@ -177,8 +208,6 @@ class ProductController extends Controller
             // Browsing lists products sharing a name in a category once.
             $query->storefrontGrouped($request->boolean('in_stock'));
         }
-
-        return $query;
     }
 
     /**
@@ -568,87 +597,9 @@ class ProductController extends Controller
                 ->firstOrFail();
         }
 
-        $validated = $request->validate([
-            'name_ar' => 'sometimes|required|string|max:255',
-            'name_en' => 'sometimes|nullable|string|max:255',
-            'slug' => 'sometimes|nullable|string|max:255|unique:products,slug,' . $product->id,
-            'category_id' => 'sometimes|required|exists:categories,id',
-            'price' => 'sometimes|required|numeric|min:0',
-            'sale_price' => 'nullable|numeric|min:0',
-            'currency' => 'sometimes|required|string|max:3',
-            'stock_quantity' => 'sometimes|required|integer|min:0',
-            'warehouse_id' => 'sometimes|nullable|integer|exists:warehouses,id',
-            'min_stock' => 'sometimes|nullable|integer|min:0',
-            'max_stock' => 'sometimes|nullable|integer|min:0',
-            'reorder_point' => 'sometimes|nullable|integer|min:0',
-            'pack_quantity' => 'sometimes|nullable|integer|min:1',
-            'weight' => 'sometimes|nullable|numeric|min:0',
-            'length' => 'sometimes|nullable|numeric|min:0',
-            'width' => 'sometimes|nullable|numeric|min:0',
-            'height' => 'sometimes|nullable|numeric|min:0',
-            'color' => 'sometimes|nullable|string|max:100',
-            'size' => 'sometimes|nullable|string|max:100',
-            'description_ar' => 'nullable|string',
-            'description_en' => 'nullable|string',
-            'short_description_ar' => 'sometimes|nullable|string|max:500',
-            'short_description_en' => 'sometimes|nullable|string|max:500',
-            'brand' => 'nullable|string|max:255',
-            'model' => 'nullable|string|max:255',
-            'sku' => 'sometimes|nullable|string|max:255|unique:products,sku,' . $product->id,
-            'barcode' => 'sometimes|nullable|string|max:255',
-            'cost_price' => 'sometimes|nullable|numeric|min:0',
-            'tax_rate' => 'sometimes|nullable|numeric|min:0|max:100',
-            'taxable' => 'sometimes|boolean',
-            'unit' => 'sometimes|nullable|string|max:50',
-            'is_active' => 'boolean',
-            'is_featured' => 'boolean',
-            'show_price' => 'boolean',
-            'sort_order' => 'sometimes|nullable|integer|min:0',
-            'in_stock' => 'boolean',
-            'image_main' => 'nullable|string|max:2048',
-            'image_gallery' => 'nullable|array',
-            'image_gallery.*' => 'nullable|string|max:2048',
-            'seo_title' => 'nullable|string|max:255',
-            'seo_description' => 'nullable|string',
-            'seo_keywords' => 'nullable|string'
-        ]);
+        $validated = $request->validate($this->updateRules($product));
 
-        // Saving an existing product used to fail on fields nobody had touched:
-        // `sku` was "sometimes|required", so the 1,600 products stored without
-        // one could not be edited at all, and a blank slug meant a 422 rather
-        // than "keep the slug it already has". Neither is the admin's problem.
-        if (array_key_exists('slug', $validated)) {
-            if ($this->blankToNull($validated['slug']) === null) {
-                // A product's slug is its public URL. Clearing the field means
-                // "no change", never "mint a new address for this page".
-                unset($validated['slug']);
-            } else {
-                $validated['slug'] = ProductIdentifiers::uniqueSlug(
-                    $validated['slug'],
-                    $validated['name_ar'] ?? $product->name_ar,
-                    $product->id
-                );
-            }
-        }
-
-        foreach (['sku', 'name_en'] as $optional) {
-            if (array_key_exists($optional, $validated)) {
-                $validated[$optional] = $this->blankToNull($validated[$optional]);
-            }
-        }
-
-        // The form is handed image_url()'s absolute URLs and posts them back
-        // unchanged, so an untouched image round-tripped into the row as
-        // "https://host/images_items/x.svg" — host baked in, and no longer the
-        // path any other reader (the model accessors, the import, the sitemap)
-        // expects. Both fields are folded back to their stored relative form.
-        if (array_key_exists('image_main', $validated)) {
-            $validated['image_main'] = image_path($validated['image_main']);
-        }
-
-        if (array_key_exists('image_gallery', $validated)) {
-            $validated['image_gallery'] = json_encode($this->normalizeGallery($validated['image_gallery']));
-        }
+        $validated = $this->normalizeUpdateInput($validated, $product);
 
         // What the product shows now, read before the update overwrites it, so
         // the files it stops showing can be swept once the new state is saved.
@@ -663,43 +614,9 @@ class ProductController extends Controller
         $targetWarehouseId = $validated['warehouse_id'] ?? null;
         unset($validated['stock_quantity'], $validated['warehouse_id']);
 
-        // A caller that names a warehouse (the products screen's quick edit,
-        // which shows the count for one warehouse at a time) is recounting
-        // that warehouse specifically, not the company-wide total — so the
-        // difference is against what that warehouse row currently holds, not
-        // against `product.stock_quantity` summed across all of them.
-        $difference = null;
-
-        if ($countedQuantity !== null) {
-            if ($targetWarehouseId) {
-                $row = WarehouseInventory::where('warehouse_id', $targetWarehouseId)
-                    ->where('product_id', $product->id)
-                    ->whereNull('product_variant_id')
-                    ->first();
-
-                $currentAtWarehouse = $row ? (int) $row->quantity : 0;
-                $reservedAtWarehouse = $row ? (int) $row->reserved_quantity : 0;
-
-                // Caught here, before anything is written, rather than left to
-                // the database's negative-balance trigger: that fires mid
-                // transaction and would otherwise leave the other field edits
-                // on this same request saved while the count silently failed.
-                if ((int) $countedQuantity < $reservedAtWarehouse) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => sprintf(
-                            'الكمية الجديدة (%d) أقل من المحجوز لطلبات قائمة في هذا المستودع (%d). عالج الطلبات أولاً أو صحّح الجرد في مستودع آخر.',
-                            $countedQuantity,
-                            $reservedAtWarehouse
-                        ),
-                        'data' => null,
-                    ], 422);
-                }
-
-                $difference = (int) $countedQuantity - $currentAtWarehouse;
-            } else {
-                $difference = (int) $countedQuantity - (int) $product->stock_quantity;
-            }
+        $difference = $this->stockDifference($product, $countedQuantity, $targetWarehouseId);
+        if ($difference instanceof JsonResponse) {
+            return $difference;
         }
 
         try {
@@ -746,6 +663,152 @@ class ProductController extends Controller
             'message' => 'Product updated successfully',
             'data' => new ProductResource($product)
         ]);
+    }
+
+    /** Validation rules for editing a product. @return array<string, mixed> */
+    private function updateRules(Product $product): array
+    {
+        return [
+            'name_ar' => 'sometimes|required|string|max:255',
+            'name_en' => 'sometimes|nullable|string|max:255',
+            'slug' => 'sometimes|nullable|string|max:255|unique:products,slug,' . $product->id,
+            'category_id' => 'sometimes|required|exists:categories,id',
+            'price' => 'sometimes|required|numeric|min:0',
+            'sale_price' => 'nullable|numeric|min:0',
+            'currency' => 'sometimes|required|string|max:3',
+            'stock_quantity' => 'sometimes|required|integer|min:0',
+            'warehouse_id' => 'sometimes|nullable|integer|exists:warehouses,id',
+            'min_stock' => 'sometimes|nullable|integer|min:0',
+            'max_stock' => 'sometimes|nullable|integer|min:0',
+            'reorder_point' => 'sometimes|nullable|integer|min:0',
+            'pack_quantity' => 'sometimes|nullable|integer|min:1',
+            'weight' => 'sometimes|nullable|numeric|min:0',
+            'length' => 'sometimes|nullable|numeric|min:0',
+            'width' => 'sometimes|nullable|numeric|min:0',
+            'height' => 'sometimes|nullable|numeric|min:0',
+            'color' => 'sometimes|nullable|string|max:100',
+            'size' => 'sometimes|nullable|string|max:100',
+            'description_ar' => 'nullable|string',
+            'description_en' => 'nullable|string',
+            'short_description_ar' => 'sometimes|nullable|string|max:500',
+            'short_description_en' => 'sometimes|nullable|string|max:500',
+            'brand' => 'nullable|string|max:255',
+            'model' => 'nullable|string|max:255',
+            'sku' => 'sometimes|nullable|string|max:255|unique:products,sku,' . $product->id,
+            'barcode' => 'sometimes|nullable|string|max:255',
+            'cost_price' => 'sometimes|nullable|numeric|min:0',
+            'tax_rate' => 'sometimes|nullable|numeric|min:0|max:100',
+            'taxable' => 'sometimes|boolean',
+            'unit' => 'sometimes|nullable|string|max:50',
+            'is_active' => 'boolean',
+            'is_featured' => 'boolean',
+            'show_price' => 'boolean',
+            'sort_order' => 'sometimes|nullable|integer|min:0',
+            'in_stock' => 'boolean',
+            'image_main' => 'nullable|string|max:2048',
+            'image_gallery' => 'nullable|array',
+            'image_gallery.*' => 'nullable|string|max:2048',
+            'seo_title' => 'nullable|string|max:255',
+            'seo_description' => 'nullable|string',
+            'seo_keywords' => 'nullable|string'
+        ];
+    }
+
+    /**
+     * Keeps blank slug/sku/name as "unchanged" or null and folds image URLs back
+     * to their stored relative form.
+     *
+     * @return array<string, mixed>
+     */
+    private function normalizeUpdateInput(array $validated, Product $product): array
+    {
+        // Saving an existing product used to fail on fields nobody had touched:
+        // `sku` was "sometimes|required", so the 1,600 products stored without
+        // one could not be edited at all, and a blank slug meant a 422 rather
+        // than "keep the slug it already has". Neither is the admin's problem.
+        if (array_key_exists('slug', $validated)) {
+            if ($this->blankToNull($validated['slug']) === null) {
+                // A product's slug is its public URL. Clearing the field means
+                // "no change", never "mint a new address for this page".
+                unset($validated['slug']);
+            } else {
+                $validated['slug'] = ProductIdentifiers::uniqueSlug(
+                    $validated['slug'],
+                    $validated['name_ar'] ?? $product->name_ar,
+                    $product->id
+                );
+            }
+        }
+
+        foreach (['sku', 'name_en'] as $optional) {
+            if (array_key_exists($optional, $validated)) {
+                $validated[$optional] = $this->blankToNull($validated[$optional]);
+            }
+        }
+
+        // The form is handed image_url()'s absolute URLs and posts them back
+        // unchanged, so an untouched image round-tripped into the row as
+        // "https://host/images_items/x.svg" — host baked in, and no longer the
+        // path any other reader (the model accessors, the import, the sitemap)
+        // expects. Both fields are folded back to their stored relative form.
+        if (array_key_exists('image_main', $validated)) {
+            $validated['image_main'] = image_path($validated['image_main']);
+        }
+
+        if (array_key_exists('image_gallery', $validated)) {
+            $validated['image_gallery'] = json_encode($this->normalizeGallery($validated['image_gallery']));
+        }
+
+        return $validated;
+    }
+
+    /**
+     * The stock count's difference, against the named warehouse's row when one
+     * is given and the product's total otherwise; a refusal when the new count
+     * is below what is reserved there.
+     */
+    private function stockDifference(Product $product, ?int $countedQuantity, $targetWarehouseId): int|JsonResponse|null
+    {
+        // A caller that names a warehouse (the products screen's quick edit,
+        // which shows the count for one warehouse at a time) is recounting
+        // that warehouse specifically, not the company-wide total — so the
+        // difference is against what that warehouse row currently holds, not
+        // against `product.stock_quantity` summed across all of them.
+        $difference = null;
+
+        if ($countedQuantity !== null) {
+            if ($targetWarehouseId) {
+                $row = WarehouseInventory::where('warehouse_id', $targetWarehouseId)
+                    ->where('product_id', $product->id)
+                    ->whereNull('product_variant_id')
+                    ->first();
+
+                $currentAtWarehouse = $row ? (int) $row->quantity : 0;
+                $reservedAtWarehouse = $row ? (int) $row->reserved_quantity : 0;
+
+                // Caught here, before anything is written, rather than left to
+                // the database's negative-balance trigger: that fires mid
+                // transaction and would otherwise leave the other field edits
+                // on this same request saved while the count silently failed.
+                if ((int) $countedQuantity < $reservedAtWarehouse) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => sprintf(
+                            'الكمية الجديدة (%d) أقل من المحجوز لطلبات قائمة في هذا المستودع (%d). عالج الطلبات أولاً أو صحّح الجرد في مستودع آخر.',
+                            $countedQuantity,
+                            $reservedAtWarehouse
+                        ),
+                        'data' => null,
+                    ], 422);
+                }
+
+                $difference = (int) $countedQuantity - $currentAtWarehouse;
+            } else {
+                $difference = (int) $countedQuantity - (int) $product->stock_quantity;
+            }
+        }
+
+        return $difference;
     }
 
     /**
