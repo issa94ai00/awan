@@ -229,6 +229,9 @@ class WeightUnitService
         }
 
         $changes = [];
+        foreach (array_merge($counts, $prices) as $column) {
+            \App\Support\SqlIdentifier::assert($column);
+        }
         foreach ($counts as $column) {
             if (Schema::hasColumn($table, $column)) {
                 $changes[$column] = DB::raw("{$column} * {$factor}");

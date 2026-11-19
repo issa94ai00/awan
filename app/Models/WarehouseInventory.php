@@ -149,6 +149,8 @@ class WarehouseInventory extends Model
      */
     public static function availableSql(string $table = 'warehouse_inventory'): string
     {
+        $table = \App\Support\SqlIdentifier::assert($table);
+
         return "CASE WHEN {$table}.available_quantity - {$table}.reserved_quantity > 0"
             ." THEN {$table}.available_quantity - {$table}.reserved_quantity ELSE 0 END";
     }

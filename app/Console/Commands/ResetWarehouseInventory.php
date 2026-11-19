@@ -211,7 +211,7 @@ class ResetWarehouseInventory extends Command
                 // Only reset auto-increment if the table is currently empty
                 if (DB::table($table)->count() === 0) {
                     try {
-                        DB::statement("ALTER TABLE `{$table}` AUTO_INCREMENT = 1");
+                        DB::statement('ALTER TABLE `'.\App\Support\SqlIdentifier::assert($table).'` AUTO_INCREMENT = 1');
                     } catch (\Throwable $e) {
                         // Not every table has an auto-increment to reset; say so and go on.
                         $this->warn("لم يُصفَّر عدّاد {$table}: ".$e->getMessage());

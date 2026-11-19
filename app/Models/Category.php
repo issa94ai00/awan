@@ -117,6 +117,8 @@ class Category extends Model implements Sitemapable
         // Its own products plus its subcategories', as two counts added up: one
         // `category_id = id OR category_id IN (...)` kept MySQL off the index
         // and took 0.8s over the whole tree, against 0.008s for this.
+        $table = \App\Support\SqlIdentifier::assert($table);
+
         return $query->selectRaw(
             '((SELECT COUNT(*) FROM products p WHERE p.is_active = 1 AND p.category_id = ' . $table . '.id)'
             . ' + (SELECT COUNT(*) FROM products p JOIN ' . $table . ' sub ON sub.id = p.category_id'
