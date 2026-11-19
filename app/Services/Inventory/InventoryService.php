@@ -230,96 +230,14 @@ class InventoryService
             $bucket = $this->bucketColumn($condition);
 
             if ($signedQuantity < 0 && ! $allowNegative) {
-                $availableInBucket = (int) $row->{$bucket};
-
-                if (! $consumeReserved && $condition === self::CONDITION_AVAILABLE) {
-                    $availableInBucket -= (int) $row->reserved_quantity;
-                }
-
-                if ($availableInBucket < abs($signedQuantity)) {
-                    throw new RuntimeException(sprintf(
-                        'الكمية المتاحة غير كافية للمنتج #%d في المستودع #%d: المتاح %d، المطلوب %d.',
-                        $productId,
-                        $warehouseId,
-                        max(0, $availableInBucket),
-                        abs($signedQuantity)
-                    ));
-                }
-
-                if ($consumeReserved && $condition === self::CONDITION_AVAILABLE) {
-                    // Refuse to ship against a row that never held the reservation.
-                    // Clamping to zero used to hide that and leave the real hold
-                    // stuck on another warehouse_inventory row.
-                    if ((int) $row->reserved_quantity < abs($signedQuantity)) {
-                        throw new RuntimeException(sprintf(
-                            'لا يوجد حجز كافٍ للمنتج #%d في المستودع #%d: المحجوز %d، المطلوب %d.',
-                            $productId,
-                            $warehouseId,
-                            (int) $row->reserved_quantity,
-                            abs($signedQuantity)
-                        ));
-                    }
-
-                    $row->reserved_quantity = (int) $row->reserved_quantity - abs($signedQuantity);
-                }
+                $this->guardIssue($row, $bucket, $productId, $warehouseId, $signedQuantity, $condition, $consumeReserved);
             }
 
             $row->quantity = (int) $row->quantity + $signedQuantity;
             $row->{$bucket} = (int) $row->{$bucket} + $signedQuantity;
             $row->save();
 
-            // FIFO layers ride on the same locked transaction as the balance,
-            // so the two can never disagree about what is on the shelf or what
-            // it cost. Stock leaving is costed against the oldest layers; the
-            // real figure replaces whatever the caller guessed at.
-            $costing = app(InventoryCostingService::class);
-            $unitCost = (float) ($options['unit_cost'] ?? 0);
-            $costedTotal = null;
-
-            // Which variant's cost layers this movement draws from or opens.
-            // Deliberately a separate option from $productVariantId: that one
-            // also picks the warehouse_inventory row, and balances are kept
-            // per product — passing a variant there would open a new row and
-            // split the balance. Costing is the only thing that needs it.
-            $costVariantId = isset($options['cost_variant_id']) && $options['cost_variant_id']
-                ? (int) $options['cost_variant_id']
-                : null;
-
-            if ($signedQuantity < 0) {
-                $consumed = $costing->consume($productId, $warehouseId, abs($signedQuantity), null, $costVariantId);
-                $unitCost = $consumed['unit_cost'];
-                $costedTotal = $consumed['cost'];
-            } else {
-                $costing->addLayer($productId, $warehouseId, $signedQuantity, $unitCost, [
-                    'product_variant_id' => $costVariantId,
-                    'source' => $options['source'] ?? null,
-                    'reference' => $options['reference'] ?? null,
-                    // Goods coming back belong where they were in the queue,
-                    // not at the end of it. A return dated now would sit behind
-                    // everything received since, so re-issuing the same units
-                    // would consume some other batch and quietly restate what
-                    // the sale cost. Callers returning stock pass the date it
-                    // originally arrived; everything else leaves this alone and
-                    // the layer is dated now.
-                    'received_at' => $options['received_at'] ?? null,
-                ]);
-
-                // A purchase moves the reference price, not just the FIFO layers:
-                // callers that pass this ask for products.cost_price to become a
-                // quantity-weighted average of what was on hand and what was just
-                // paid, so the figure shown around the app keeps tracking reality
-                // instead of freezing at whatever the product was created with.
-                if ($options['update_average_cost'] ?? false) {
-                    $this->applyWeightedAverageCost($productId, $signedQuantity, $unitCost);
-                }
-
-                // The shelf price is a decision the operator made when they
-                // typed it on the receipt, not a figure to blend with the old
-                // one — so, unlike cost, it is set outright rather than averaged.
-                if (! empty($options['sale_price'])) {
-                    $this->applySalePrice($productId, (float) $options['sale_price']);
-                }
-            }
+            [$unitCost, $costedTotal] = $this->applyCosting($productId, $warehouseId, $signedQuantity, $options);
 
             // The model hook on StockMovement maintains products.stock_quantity,
             // so it is deliberately not touched here — doing both would double
@@ -348,6 +266,110 @@ class InventoryService
 
             return $movement;
         });
+    }
+
+    /**
+     * Refuses an issue the shelf cannot cover, and releases the hold when the
+     * issue ships reserved stock. Runs inside move()'s locked transaction.
+     */
+    private function guardIssue($row, string $bucket, int $productId, int $warehouseId, int $signedQuantity, string $condition, bool $consumeReserved): void
+    {
+            $availableInBucket = (int) $row->{$bucket};
+
+            if (! $consumeReserved && $condition === self::CONDITION_AVAILABLE) {
+                $availableInBucket -= (int) $row->reserved_quantity;
+            }
+
+            if ($availableInBucket < abs($signedQuantity)) {
+                throw new RuntimeException(sprintf(
+                    'الكمية المتاحة غير كافية للمنتج #%d في المستودع #%d: المتاح %d، المطلوب %d.',
+                    $productId,
+                    $warehouseId,
+                    max(0, $availableInBucket),
+                    abs($signedQuantity)
+                ));
+            }
+
+            if ($consumeReserved && $condition === self::CONDITION_AVAILABLE) {
+                // Refuse to ship against a row that never held the reservation.
+                // Clamping to zero used to hide that and leave the real hold
+                // stuck on another warehouse_inventory row.
+                if ((int) $row->reserved_quantity < abs($signedQuantity)) {
+                    throw new RuntimeException(sprintf(
+                        'لا يوجد حجز كافٍ للمنتج #%d في المستودع #%d: المحجوز %d، المطلوب %d.',
+                        $productId,
+                        $warehouseId,
+                        (int) $row->reserved_quantity,
+                        abs($signedQuantity)
+                    ));
+                }
+
+                $row->reserved_quantity = (int) $row->reserved_quantity - abs($signedQuantity);
+            }
+    }
+
+    /**
+     * Costs one movement against the FIFO layers: an issue consumes the oldest
+     * layers, a receipt opens a new one.
+     *
+     * @return array{0: float, 1: float|null} unit cost and, for an issue, the total consumed
+     */
+    private function applyCosting(int $productId, int $warehouseId, int $signedQuantity, array $options): array
+    {
+        // FIFO layers ride on the same locked transaction as the balance,
+        // so the two can never disagree about what is on the shelf or what
+        // it cost. Stock leaving is costed against the oldest layers; the
+        // real figure replaces whatever the caller guessed at.
+        $costing = app(InventoryCostingService::class);
+        $unitCost = (float) ($options['unit_cost'] ?? 0);
+        $costedTotal = null;
+
+        // Which variant's cost layers this movement draws from or opens.
+        // Deliberately a separate option from $productVariantId: that one
+        // also picks the warehouse_inventory row, and balances are kept
+        // per product — passing a variant there would open a new row and
+        // split the balance. Costing is the only thing that needs it.
+        $costVariantId = isset($options['cost_variant_id']) && $options['cost_variant_id']
+            ? (int) $options['cost_variant_id']
+            : null;
+
+        if ($signedQuantity < 0) {
+            $consumed = $costing->consume($productId, $warehouseId, abs($signedQuantity), null, $costVariantId);
+            $unitCost = $consumed['unit_cost'];
+            $costedTotal = $consumed['cost'];
+        } else {
+            $costing->addLayer($productId, $warehouseId, $signedQuantity, $unitCost, [
+                'product_variant_id' => $costVariantId,
+                'source' => $options['source'] ?? null,
+                'reference' => $options['reference'] ?? null,
+                // Goods coming back belong where they were in the queue,
+                // not at the end of it. A return dated now would sit behind
+                // everything received since, so re-issuing the same units
+                // would consume some other batch and quietly restate what
+                // the sale cost. Callers returning stock pass the date it
+                // originally arrived; everything else leaves this alone and
+                // the layer is dated now.
+                'received_at' => $options['received_at'] ?? null,
+            ]);
+
+            // A purchase moves the reference price, not just the FIFO layers:
+            // callers that pass this ask for products.cost_price to become a
+            // quantity-weighted average of what was on hand and what was just
+            // paid, so the figure shown around the app keeps tracking reality
+            // instead of freezing at whatever the product was created with.
+            if ($options['update_average_cost'] ?? false) {
+                $this->applyWeightedAverageCost($productId, $signedQuantity, $unitCost);
+            }
+
+            // The shelf price is a decision the operator made when they
+            // typed it on the receipt, not a figure to blend with the old
+            // one — so, unlike cost, it is set outright rather than averaged.
+            if (! empty($options['sale_price'])) {
+                $this->applySalePrice($productId, (float) $options['sale_price']);
+            }
+        }
+
+        return [$unitCost, $costedTotal];
     }
 
     /**
