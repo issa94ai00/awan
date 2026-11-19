@@ -606,52 +606,7 @@ class SalesOrderController extends Controller
         // Every edit after the pending stage is kept as a new version.
         $versioning = $status !== SalesOrder::STATUS_PENDING;
 
-        $deliveryAnchor = $request->filled('order_date') || ! $salesOrder->order_date
-            ? 'after_or_equal:order_date'
-            : 'after_or_equal:'.$salesOrder->order_date->toDateString();
-
-        $validated = $request->validate([
-            // Header fields are optional so item-only saves need not restate
-            // customer/shipping/notes — missing keys keep the current values.
-            'customer_id' => 'sometimes|nullable|exists:customers,id',
-            'assigned_employee_id' => 'nullable|exists:employees,id',
-            'fulfillment_warehouse_id' => 'nullable|exists:warehouses,id',
-            'fulfillment_type' => 'nullable|in:ship,pickup,delivery',
-            'order_date' => 'nullable|date',
-            // Same-day delivery is allowed (the form's "today" chip). A save
-            // that leaves order_date out is checked against the stored date.
-            'expected_delivery' => ['nullable', 'date', $deliveryAnchor],
-            'discount' => 'nullable|numeric|min:0',
-            'discount_percent' => 'nullable|numeric|min:0|max:100',
-            'tax' => 'nullable|numeric|min:0',
-            'tax_percent' => 'nullable|numeric|min:0|max:100',
-            'shipping_cost' => 'nullable|numeric|min:0',
-            'shipping_address' => 'nullable|string|max:500',
-            'notes' => 'nullable|string|max:1000',
-            'items' => 'required|array|min:1',
-            'items.*.product_id' => 'required|exists:products,id',
-            'items.*.quantity' => 'required|integer|min:1',
-            'items.*.unit_price' => 'required|numeric|min:0',
-            'items.*.discount' => 'nullable|numeric|min:0',
-            'items.*.tax' => 'nullable|numeric|min:0',
-            'items.*.product_unit_id' => 'nullable|integer|exists:product_units,id',
-            'items.*.product_variant_id' => 'nullable|integer|exists:product_variants,id',
-            // Which warehouses fill each line, as the new-order wizard planned
-            // it. Optional: an order saved without one is routed at
-            // confirmation, as before.
-            'items.*.allocations' => 'nullable|array',
-            'items.*.allocations.*.warehouse_id' => 'required|integer|exists:warehouses,id',
-            'items.*.allocations.*.quantity' => 'required|integer|min:1',
-            'expenses' => 'nullable|array',
-            'expenses.*.description' => 'required_with:expenses|string|max:255',
-            'expenses.*.amount' => 'required_with:expenses|numeric|min:0',
-            'expenses.*.category' => 'nullable|string|in:shipping,packaging,handling,other',
-            'expenses.*.status' => 'nullable|string|in:pending,paid,approved,rejected',
-            'expenses.*.notes' => 'nullable|string|max:1000',
-            // Why the confirmed order is being changed — kept on the version
-            // it replaces.
-            'revision_note' => 'nullable|string|max:500',
-        ], $this->validationMessages());
+        $validated = $request->validate($this->updateRules($request, $salesOrder), $this->validationMessages());
         $revisionNote = $validated['revision_note'] ?? null;
         unset($validated['revision_note']);
 
@@ -731,34 +686,7 @@ class SalesOrderController extends Controller
 
         $validated['subtotal'] = $subtotal;
 
-        $discountPercent = array_key_exists('discount_percent', $validated)
-            ? ($validated['discount_percent'] !== '' && $validated['discount_percent'] !== null ? (float) $validated['discount_percent'] : null)
-            : ($salesOrder->discount_percent ?? null);
-        $taxPercent = array_key_exists('tax_percent', $validated)
-            ? ($validated['tax_percent'] !== '' && $validated['tax_percent'] !== null ? (float) $validated['tax_percent'] : null)
-            : ($salesOrder->tax_percent ?? null);
-
-        $discountAmount = $discountPercent !== null
-            ? round(max(0, $subtotal) * ($discountPercent / 100), 5)
-            : (float) ($validated['discount'] ?? $salesOrder->discount ?? 0);
-        $taxAmount = $taxPercent !== null
-            ? round(max(0, $subtotal - $discountAmount) * ($taxPercent / 100), 5)
-            : (float) ($validated['tax'] ?? $salesOrder->tax ?? 0);
-
-        if ($discountPercent === null && $discountAmount - max(0, $subtotal) > 0.005) {
-            throw ValidationException::withMessages([
-                'discount' => [sprintf(
-                    'مبلغ الخصم (%s) أكبر من مجموع المنتجات (%s).',
-                    number_format($discountAmount, 2),
-                    number_format(max(0, $subtotal), 2)
-                )],
-            ]);
-        }
-
-        $validated['discount'] = $discountAmount;
-        $validated['discount_percent'] = $discountPercent;
-        $validated['tax'] = $taxAmount;
-        $validated['tax_percent'] = $taxPercent;
+        $validated = $this->applyOrderTotals($validated, $salesOrder, $subtotal);
 
         $expensesProvided = $request->has('expenses') && ! $amending;
         $expensesInput = $validated['expenses'] ?? [];
@@ -771,7 +699,7 @@ class SalesOrderController extends Controller
             }
         }
 
-        $validated['total'] = round($subtotal - $discountAmount + $taxAmount + (float) ($validated['shipping_cost'] ?? $salesOrder->shipping_cost ?? 0), 2);
+        $validated['total'] = round($subtotal - $validated['discount'] + $validated['tax'] + (float) ($validated['shipping_cost'] ?? $salesOrder->shipping_cost ?? 0), 2);
 
         // Derived from whoever the order now belongs to — which may be a rep it
         // was just reassigned to, so the warehouse follows the round rather than
@@ -802,53 +730,13 @@ class SalesOrderController extends Controller
                 }
 
                 if ($expensesProvided) {
-                    foreach ($salesOrder->expenses()->get() as $oldExp) {
-                        try {
-                            $this->ledger->reverseFor($oldExp->postingKey());
-                        } catch (\Throwable $e) {
-                            report($e);
-                        }
-                    }
-                    $salesOrder->expenses()->delete();
-
-                    if (is_array($expensesInput)) {
-                        foreach ($expensesInput as $exp) {
-                            if (! empty($exp['description']) && (float) ($exp['amount'] ?? 0) > 0) {
-                                $createdExpenses[] = Expense::create([
-                                    'expense_number' => DocumentNumbers::format('expense', ((int) Expense::max('id')) + 1),
-                                    'sales_order_id' => $salesOrder->id,
-                                    'customer_id' => $salesOrder->customer_id,
-                                    'description' => $exp['description'],
-                                    'amount' => (float) $exp['amount'],
-                                    'category' => $exp['category'] ?? 'shipping',
-                                    'expense_date' => now(),
-                                    'status' => $exp['status'] ?? Expense::STATUS_PENDING,
-                                    'notes' => $exp['notes'] ?? null,
-                                    'created_by' => auth()->id(),
-                                    'currency' => base_currency_code(),
-                                    'exchange_rate' => 1.0000,
-                                ]);
-                            }
-                        }
-                    }
+                    $createdExpenses = $this->replaceExpenses($salesOrder, $expensesInput);
                 }
 
                 // The lines are rewritten, and their allocations with them; the
                 // warehouses the order was routed through go too when a plan is
                 // sent, so it is the whole plan rather than laid over the old.
-                $salesOrder->items()->delete();
-                $created = [];
-                foreach ($lineItems as $item) {
-                    $created[] = $salesOrder->items()->create($item);
-                }
-
-                // A cancelled order holds no stock, so its lines are only
-                // rewritten — it is not routed or reserved again.
-                $plan = $cancelled ? [] : $this->planFrom($created, $request->items);
-                if (array_filter($plan)) {
-                    $salesOrder->routings()->sync([]);
-                    $this->workflow->applyInitialPlan($salesOrder->refresh(), $plan);
-                }
+                $this->rewriteLines($salesOrder, $lineItems, $request->items, $cancelled);
             });
         } catch (RuntimeException $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage(), 'data' => null], 422);
@@ -876,6 +764,156 @@ class SalesOrderController extends Controller
                 'current' => (int) $salesOrder->revision,
             ] : null,
         ]);
+    }
+
+    /** Validation rules for editing an order. @return array<string, mixed> */
+    private function updateRules(Request $request, SalesOrder $salesOrder): array
+    {
+        $deliveryAnchor = $request->filled('order_date') || ! $salesOrder->order_date
+            ? 'after_or_equal:order_date'
+            : 'after_or_equal:'.$salesOrder->order_date->toDateString();
+
+        return [
+            // Header fields are optional so item-only saves need not restate
+            // customer/shipping/notes — missing keys keep the current values.
+            'customer_id' => 'sometimes|nullable|exists:customers,id',
+            'assigned_employee_id' => 'nullable|exists:employees,id',
+            'fulfillment_warehouse_id' => 'nullable|exists:warehouses,id',
+            'fulfillment_type' => 'nullable|in:ship,pickup,delivery',
+            'order_date' => 'nullable|date',
+            // Same-day delivery is allowed (the form's "today" chip). A save
+            // that leaves order_date out is checked against the stored date.
+            'expected_delivery' => ['nullable', 'date', $deliveryAnchor],
+            'discount' => 'nullable|numeric|min:0',
+            'discount_percent' => 'nullable|numeric|min:0|max:100',
+            'tax' => 'nullable|numeric|min:0',
+            'tax_percent' => 'nullable|numeric|min:0|max:100',
+            'shipping_cost' => 'nullable|numeric|min:0',
+            'shipping_address' => 'nullable|string|max:500',
+            'notes' => 'nullable|string|max:1000',
+            'items' => 'required|array|min:1',
+            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.quantity' => 'required|integer|min:1',
+            'items.*.unit_price' => 'required|numeric|min:0',
+            'items.*.discount' => 'nullable|numeric|min:0',
+            'items.*.tax' => 'nullable|numeric|min:0',
+            'items.*.product_unit_id' => 'nullable|integer|exists:product_units,id',
+            'items.*.product_variant_id' => 'nullable|integer|exists:product_variants,id',
+            // Which warehouses fill each line, as the new-order wizard planned
+            // it. Optional: an order saved without one is routed at
+            // confirmation, as before.
+            'items.*.allocations' => 'nullable|array',
+            'items.*.allocations.*.warehouse_id' => 'required|integer|exists:warehouses,id',
+            'items.*.allocations.*.quantity' => 'required|integer|min:1',
+            'expenses' => 'nullable|array',
+            'expenses.*.description' => 'required_with:expenses|string|max:255',
+            'expenses.*.amount' => 'required_with:expenses|numeric|min:0',
+            'expenses.*.category' => 'nullable|string|in:shipping,packaging,handling,other',
+            'expenses.*.status' => 'nullable|string|in:pending,paid,approved,rejected',
+            'expenses.*.notes' => 'nullable|string|max:1000',
+            // Why the confirmed order is being changed — kept on the version
+            // it replaces.
+            'revision_note' => 'nullable|string|max:500',
+        ];
+    }
+
+    /**
+     * Resolves discount and tax (percent or amount) against the lines' subtotal
+     * and refuses a discount larger than the goods.
+     *
+     * @return array<string, mixed> $validated with discount/tax and their percents settled
+     */
+    private function applyOrderTotals(array $validated, SalesOrder $salesOrder, float $subtotal): array
+    {
+        $discountPercent = array_key_exists('discount_percent', $validated)
+            ? ($validated['discount_percent'] !== '' && $validated['discount_percent'] !== null ? (float) $validated['discount_percent'] : null)
+            : ($salesOrder->discount_percent ?? null);
+        $taxPercent = array_key_exists('tax_percent', $validated)
+            ? ($validated['tax_percent'] !== '' && $validated['tax_percent'] !== null ? (float) $validated['tax_percent'] : null)
+            : ($salesOrder->tax_percent ?? null);
+
+        $discountAmount = $discountPercent !== null
+            ? round(max(0, $subtotal) * ($discountPercent / 100), 5)
+            : (float) ($validated['discount'] ?? $salesOrder->discount ?? 0);
+        $taxAmount = $taxPercent !== null
+            ? round(max(0, $subtotal - $discountAmount) * ($taxPercent / 100), 5)
+            : (float) ($validated['tax'] ?? $salesOrder->tax ?? 0);
+
+        if ($discountPercent === null && $discountAmount - max(0, $subtotal) > 0.005) {
+            throw ValidationException::withMessages([
+                'discount' => [sprintf(
+                    'مبلغ الخصم (%s) أكبر من مجموع المنتجات (%s).',
+                    number_format($discountAmount, 2),
+                    number_format(max(0, $subtotal), 2)
+                )],
+            ]);
+        }
+
+        $validated['discount'] = $discountAmount;
+        $validated['discount_percent'] = $discountPercent;
+        $validated['tax'] = $taxAmount;
+        $validated['tax_percent'] = $taxPercent;
+
+        return $validated;
+    }
+
+    /**
+     * Replaces an order's expenses, reversing the ledger entries of the old ones.
+     *
+     * @return list<Expense> the new expenses, to be posted once the transaction commits
+     */
+    private function replaceExpenses(SalesOrder $salesOrder, mixed $expensesInput): array
+    {
+        $createdExpenses = [];
+    foreach ($salesOrder->expenses()->get() as $oldExp) {
+        try {
+            $this->ledger->reverseFor($oldExp->postingKey());
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+    $salesOrder->expenses()->delete();
+
+    if (is_array($expensesInput)) {
+        foreach ($expensesInput as $exp) {
+            if (! empty($exp['description']) && (float) ($exp['amount'] ?? 0) > 0) {
+                $createdExpenses[] = Expense::create([
+                    'expense_number' => DocumentNumbers::format('expense', ((int) Expense::max('id')) + 1),
+                    'sales_order_id' => $salesOrder->id,
+                    'customer_id' => $salesOrder->customer_id,
+                    'description' => $exp['description'],
+                    'amount' => (float) $exp['amount'],
+                    'category' => $exp['category'] ?? 'shipping',
+                    'expense_date' => now(),
+                    'status' => $exp['status'] ?? Expense::STATUS_PENDING,
+                    'notes' => $exp['notes'] ?? null,
+                    'created_by' => auth()->id(),
+                    'currency' => base_currency_code(),
+                    'exchange_rate' => 1.0000,
+                ]);
+            }
+        }
+    }
+
+        return $createdExpenses;
+    }
+
+    /** Rewrites an order's lines and, unless it is cancelled, re-applies the sourcing plan. */
+    private function rewriteLines(SalesOrder $salesOrder, array $lineItems, mixed $requestItems, bool $cancelled): void
+    {
+$salesOrder->items()->delete();
+$created = [];
+foreach ($lineItems as $item) {
+    $created[] = $salesOrder->items()->create($item);
+}
+
+// A cancelled order holds no stock, so its lines are only
+// rewritten — it is not routed or reserved again.
+$plan = $cancelled ? [] : $this->planFrom($created, $requestItems);
+if (array_filter($plan)) {
+    $salesOrder->routings()->sync([]);
+    $this->workflow->applyInitialPlan($salesOrder->refresh(), $plan);
+}
     }
 
     /**
