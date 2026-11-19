@@ -156,3 +156,36 @@ it('clears the flutter cart call without error', function () {
 
     $this->postJson('/api/v1/flutter/cart/clear')->assertOk()->assertJson(['success' => true, 'message' => 'Cart cleared']);
 });
+
+// The same three routes by their literal URLs, one block per surface.
+it('updates, removes and clears through /cart', function () {
+    $p = cartProduct(10);
+    $cart = sessionCart($this);
+    $id = $cart->items()->create(['product_id' => $p->id, 'quantity' => 1, 'price' => 10])->id;
+
+    $this->postJson("/cart/update/$id", ['quantity' => 3])->assertOk();
+    expect((int) CartItem::find($id)->quantity)->toBe(3);
+
+    $this->postJson("/cart/remove/$id")->assertOk();
+    expect(CartItem::count())->toBe(0);
+
+    $cart->items()->create(['product_id' => $p->id, 'quantity' => 1, 'price' => 10]);
+    $this->postJson('/cart/clear')->assertOk();
+    expect(CartItem::count())->toBe(0);
+});
+
+it('updates, removes and clears through /api/v1/cart', function () {
+    $p = cartProduct(10);
+    $cart = sessionCart($this);
+    $id = $cart->items()->create(['product_id' => $p->id, 'quantity' => 1, 'price' => 10])->id;
+
+    $this->postJson("/api/v1/cart/update/$id", ['quantity' => 3])->assertOk();
+    expect((int) CartItem::find($id)->quantity)->toBe(3);
+
+    $this->postJson("/api/v1/cart/remove/$id")->assertOk();
+    expect(CartItem::count())->toBe(0);
+
+    $cart->items()->create(['product_id' => $p->id, 'quantity' => 1, 'price' => 10]);
+    $this->postJson('/api/v1/cart/clear')->assertOk();
+    expect(CartItem::count())->toBe(0);
+});
