@@ -72,7 +72,7 @@ class ErpUpgradeController extends Controller
         $success = $this->service->reserveInventory(
             $validated['warehouse_id'],
             $validated['product_id'],
-            $validated['product_variant_id'],
+            $validated['product_variant_id'] ?? null,
             $validated['quantity']
         );
 
@@ -102,7 +102,7 @@ class ErpUpgradeController extends Controller
         $success = $this->service->releaseInventory(
             $validated['warehouse_id'],
             $validated['product_id'],
-            $validated['product_variant_id'],
+            $validated['product_variant_id'] ?? null,
             $validated['quantity'],
             $validated['is_shipped'] ?? false
         );

@@ -126,7 +126,9 @@ class Inquiry extends Model
 
     public function getPriorityLabelAttribute(): string
     {
-        return self::getPriorityOptions()[$this->priority] ?? $this->priority;
+        $priority = $this->priority ?? 'medium';
+
+        return self::getPriorityOptions()[$priority] ?? (string) $priority;
     }
 
     public function getClosedAtFormattedAttribute(): ?string

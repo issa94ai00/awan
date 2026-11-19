@@ -192,6 +192,7 @@ class CompositeProductService
         try {
             // Create assembly order record (you may need to create this table)
             $assemblyOrder = DB::table('product_assembly_orders')->insertGetId([
+                'assembly_number' => 'ASM-'.str_pad((string) (((int) DB::table('product_assembly_orders')->max('id')) + 1), 6, '0', STR_PAD_LEFT),
                 'parent_product_id' => $productId,
                 'warehouse_id' => $warehouseId,
                 'assembly_area_id' => $assemblyAreaId,

@@ -348,7 +348,7 @@ class PayrollController extends Controller
                 'employee_id' => $employee->id,
                 'pay_period_start' => $validated['pay_period_start'],
                 'pay_period_end' => $validated['pay_period_end'],
-                'payment_date' => $validated['payment_date'],
+                'payment_date' => $validated['payment_date'] ?? $validated['pay_period_end'],
                 'basic_salary' => $employee->salary ?? 0,
                 'overtime_hours' => 0,
                 'overtime_rate' => 0,

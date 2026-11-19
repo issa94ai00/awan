@@ -128,11 +128,22 @@ test('composite assembly create refuses on shortage and completes a pending orde
     expect(DB::table('product_assembly_orders')->count())->toBe(0);
     expect(compOnHand($this->comp->id, $this->warehouse->id))->toBe([10, 0, 10]);
 
+    // A covered order is created, numbered and reserves its components.
+    $this->postJson('/api/v1/admin/composite-products/assembly-orders', [
+        'product_id' => $this->parent->id, 'quantity' => 3, 'warehouse_id' => $this->warehouse->id,
+    ])->assertOk()->assertJsonPath('success', true);
+    expect(DB::table('product_assembly_orders')->count())->toBe(1)
+        ->and(DB::table('product_assembly_orders')->value('assembly_number'))->toStartWith('ASM-');
+    // Clear it again so the rest of this test starts from untouched stock.
+    DB::table('product_assembly_order_items')->delete();
+    DB::table('product_assembly_orders')->delete();
+    WarehouseInventory::where('product_id', $this->comp->id)->update(['reserved_quantity' => 0]);
+
     // validation
     $this->postJson('/api/v1/admin/composite-products/assembly-orders', ['product_id' => $this->parent->id, 'quantity' => 0, 'warehouse_id' => $this->warehouse->id])->assertStatus(422);
 
     // A pending order with its reservation, as createAssemblyOrder would leave it
-    // (the create route itself is covered above; see report for its assembly_number bug).
+    // (the create route itself is covered above).
     $orderId = DB::table('product_assembly_orders')->insertGetId([
         'assembly_number' => 'ASM-T-1', 'parent_product_id' => $this->parent->id, 'warehouse_id' => $this->warehouse->id,
         'quantity_to_assemble' => 3, 'status' => 'pending', 'created_at' => now(), 'updated_at' => now(),
@@ -204,7 +215,7 @@ test('composite update components changes quantities only for that parent', func
 
 // ---------------------------------------------------------------------- MRP
 
-test('mrp execute recommendations route is reachable and unknown assignment is 404', function () {
+test('mrp execute route is reachable and unknown assignment is 404', function () {
     $assignment = ProductWarehouseAssignment::create([
         'product_id' => $this->comp->id, 'warehouse_id' => $this->warehouse->id, 'is_active' => true,
         'planning_method' => 'mrp', 'replenishment_method' => 'purchase', 'min_stock_level' => 5, 'max_stock_level' => 20,
@@ -212,9 +223,8 @@ test('mrp execute recommendations route is reachable and unknown assignment is 4
     ]);
     $id = $assignment->id;
 
-    // See report: MrpService::calculateGrossRequirements queries a non-existent
-    // sales_orders.delivery_date column, so a real execution currently errors out.
-    // Only the routing/auth layer is asserted here.
+    // MrpService still queries purchase_orders.expected_date / warehouse_id, which the
+    // schema does not have, so a real execution errors out. Only routing/auth is asserted.
     $res = $this->actingAs($this->admin)->postJson("/api/v1/admin/mrp/assignments/$id/execute", ['recommendation_types' => []]);
     expect($res->status())->not->toBe(401)->and($res->status())->not->toBe(403)->and($res->status())->not->toBe(404);
 

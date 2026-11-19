@@ -112,8 +112,8 @@ test('allocate FIFO takes oldest batch first and refuses when stock is short', f
 
 test('reserve and release move reserved_quantity and refuse the impossible', function () {
     invStock($this);
-    // product_variant_id must be sent explicitly (null): omitting it 500s, see report.
-    $base = ['product_id' => $this->product->id, 'warehouse_id' => $this->wh->id, 'product_variant_id' => null];
+    // product_variant_id is optional: omitting it must work.
+    $base = ['product_id' => $this->product->id, 'warehouse_id' => $this->wh->id];
     $this->actingAs($this->admin);
 
     $this->postJson('/api/v1/inventory/reserve', $base + ['quantity' => 4])->assertOk()->assertJsonPath('success', true);
@@ -148,8 +148,6 @@ test('update-reorder-points recalculates reorder point from safety stock and dai
     app(InventoryService::class)->issue($this->product->id, 10, $this->wh->id, ['key' => 'rp-out']);
     invRow($this->product->id, $this->wh->id)->update(['lead_time_days' => 3]);
 
-    // Rows below their reorder point would raise a ReorderAlert; that path is
-    // currently broken (see report), so the stock here stays above it.
     $this->actingAs($this->admin)->postJson('/api/v1/inventory/update-reorder-points', ['warehouse_id' => $this->wh->id])
         ->assertOk()->assertJsonPath('success', true)->assertJsonPath('data.updated_count', 1);
 

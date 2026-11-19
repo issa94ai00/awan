@@ -92,6 +92,12 @@ class WorkflowController extends Controller
             'input_data' => 'nullable|array',
         ]);
 
+        // An inactive workflow, or one with no steps, is refused here rather than
+        // surfacing as a 500 from the service.
+        if (! Workflow::with('steps')->findOrFail($id)->canExecute()) {
+            return response()->json(['message' => 'لا يمكن تنفيذ سير العمل: يجب أن يكون فعّالاً ويحتوي على خطوة واحدة على الأقل.'], 422);
+        }
+
         $execution = $this->workflowService->executeWorkflow(
             $id,
             $validated['input_data'] ?? [],

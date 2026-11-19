@@ -110,7 +110,7 @@ class EnhancedSalesOrderController extends Controller
 
             // The responsible employee is always the current session user — never
             // taken from the request, so it cannot be reassigned on creation.
-            $assignedEmployeeId = App\Models\Employee::where('user_id', auth()->id())->value('id');
+            $assignedEmployeeId = \App\Models\Employee::where('user_id', auth()->id())->value('id');
 
             $order = SalesOrder::create([
                 'order_number' => DocumentNumbers::format('sales_order', SalesOrder::count() + 1),

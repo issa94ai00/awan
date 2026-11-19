@@ -66,6 +66,17 @@ it('creates a draft contract, validates dates, then approves it once', function 
     $this->actingAs($this->admin)->postJson("/api/v1/sales-orders/contracts/$id/approve")->assertStatus(422);
 });
 
+it('creates an enhanced order attributed to the signed-in employee', function () {
+    $res = $this->actingAs($this->admin)->postJson('/api/v1/sales-orders/enhanced', [
+        'customer_id' => $this->customer->id, 'fulfillment_type' => 'ship',
+        'shipping_cost' => 0, 'tax_amount' => 0, 'discount_amount' => 0,
+        'items' => [['product_id' => $this->product->id, 'quantity' => 2, 'unit_price' => 100]],
+    ]);
+
+    $res->assertSuccessful();
+    expect(SalesOrder::count())->toBe(1)->and(SalesOrder::first()->items()->count())->toBe(1);
+});
+
 it('rejects an enhanced order with no items', function () {
     $this->actingAs($this->admin)->postJson('/api/v1/sales-orders/enhanced', [
         'customer_id' => $this->customer->id, 'fulfillment_type' => 'ship',

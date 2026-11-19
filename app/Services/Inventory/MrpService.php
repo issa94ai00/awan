@@ -166,7 +166,7 @@ class MrpService
                 ->join('sales_order_items', 'sales_orders.id', '=', 'sales_order_items.sales_order_id')
                 ->where('sales_order_items.product_id', $productId)
                 ->where('sales_orders.fulfillment_warehouse_id', $warehouseId)
-                ->where('sales_orders.delivery_date', $date->toDateString())
+                ->whereDate('sales_orders.expected_delivery', $date->toDateString())
                 ->where('sales_orders.status', '!=', 'cancelled')
                 ->sum('sales_order_items.quantity');
 

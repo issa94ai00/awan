@@ -94,7 +94,8 @@ class HomeController extends Controller
         // Create the inquiry
         $inquiry = \App\Models\Inquiry::create([
             'name' => $validated['name'],
-            'email' => $validated['email'] ?? null,
+            // The column is NOT NULL, so an inquiry sent without one stores an empty string.
+            'email' => $validated['email'] ?? '',
             'phone' => $validated['phone'],
             'subject' => $validated['subject'],
             'message' => $validated['message'],

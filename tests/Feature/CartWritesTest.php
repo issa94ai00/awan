@@ -117,15 +117,38 @@ it('validates flutter cart input', function () {
     $this->postJson('/api/v1/flutter/cart/remove', ['cart_item_id' => 999999])->assertStatus(422);
 });
 
-// FlutterCartController::add writes through CartItem, whose $fillable has no
-// user_id/size/color and whose table requires cart_id, so the insert fails.
-// Pinned as actual behaviour, not desired behaviour.
-it('currently fails server-side when the flutter cart adds an item', function () {
-    Sanctum::actingAs(User::factory()->create());
+it('adds, updates, removes and clears flutter cart items on the user cart', function () {
+    $user = User::factory()->create();
+    Sanctum::actingAs($user);
     $p = cartProduct();
 
-    $this->postJson('/api/v1/flutter/cart/add', ['product_id' => $p->id, 'quantity' => 1])->assertStatus(500);
+    $this->postJson('/api/v1/flutter/cart/add', ['product_id' => $p->id, 'quantity' => 2])->assertOk();
+    // Adding the same product again adds to the line instead of duplicating it.
+    $this->postJson('/api/v1/flutter/cart/add', ['product_id' => $p->id, 'quantity' => 1])->assertOk();
+    expect(CartItem::count())->toBe(1)->and((int) CartItem::first()->quantity)->toBe(3);
+
+    $id = CartItem::first()->id;
+    $this->postJson('/api/v1/flutter/cart/update', ['cart_item_id' => $id, 'quantity' => 5])->assertOk();
+    expect((int) CartItem::find($id)->quantity)->toBe(5);
+
+    $this->postJson('/api/v1/flutter/cart/remove', ['cart_item_id' => $id])->assertOk();
     expect(CartItem::count())->toBe(0);
+
+    $this->postJson('/api/v1/flutter/cart/add', ['product_id' => $p->id, 'quantity' => 1])->assertOk();
+    $this->postJson('/api/v1/flutter/cart/clear')->assertOk();
+    expect(CartItem::count())->toBe(0);
+});
+
+it('does not let a user touch another user\'s flutter cart line', function () {
+    $p = cartProduct();
+    Sanctum::actingAs(User::factory()->create());
+    $this->postJson('/api/v1/flutter/cart/add', ['product_id' => $p->id, 'quantity' => 1])->assertOk();
+    $id = CartItem::first()->id;
+
+    Sanctum::actingAs(User::factory()->create());
+    $this->postJson('/api/v1/flutter/cart/update', ['cart_item_id' => $id, 'quantity' => 9])->assertNotFound();
+    $this->postJson('/api/v1/flutter/cart/remove', ['cart_item_id' => $id])->assertNotFound();
+    expect((int) CartItem::find($id)->quantity)->toBe(1);
 });
 
 it('clears the flutter cart call without error', function () {

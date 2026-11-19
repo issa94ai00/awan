@@ -412,6 +412,8 @@ class EnhancedInventoryController extends Controller
                             'current_quantity' => $inventory->available_stock,
                             'reorder_point' => $inventory->reorder_point,
                             'safety_stock' => $inventory->safety_stock,
+                            // NOT NULL; recomputed from lead time just below.
+                            'suggested_order_quantity' => 0,
                             'alerted_at' => now(),
                         ]
                     );
