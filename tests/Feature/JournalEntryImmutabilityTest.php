@@ -28,33 +28,33 @@ beforeEach(function () {
 });
 
 it('refuses to edit a posted entry', function () {
-    $e = ($this->postEntry)();
+    $id = ($this->postEntry)()['id'];
 
-    $this->actingAs($this->admin)->putJson("/api/v1/admin/accounting/journal-entries/{$e['id']}", ['description' => 'x'])
+    $this->actingAs($this->admin)->putJson("/api/v1/admin/accounting/journal-entries/$id", ['description' => 'x'])
         ->assertStatus(422);
 
-    expect(JournalEntryHeader::find($e['id'])->description)->toBe('قيد يدوي');
+    expect(JournalEntryHeader::find($id)->description)->toBe('قيد يدوي');
 });
 
 it('refuses to delete a posted entry', function () {
-    $e = ($this->postEntry)();
+    $id = ($this->postEntry)()['id'];
 
-    $this->actingAs($this->admin)->deleteJson("/api/v1/admin/accounting/journal-entries/{$e['id']}")
+    $this->actingAs($this->admin)->deleteJson("/api/v1/admin/accounting/journal-entries/$id")
         ->assertStatus(422);
 
-    expect(JournalEntryHeader::find($e['id']))->not->toBeNull();
+    expect(JournalEntryHeader::find($id))->not->toBeNull();
 });
 
 it('reverses an entry once, restoring balances, and refuses a second reversal', function () {
     $before = (float) LedgerAccount::where('posting_role', 'cash')->value('balance');
-    $e = ($this->postEntry)();
+    $id = ($this->postEntry)()['id'];
 
-    $this->actingAs($this->admin)->postJson("/api/v1/admin/accounting/journal-entries/{$e['id']}/reverse")
+    $this->actingAs($this->admin)->postJson("/api/v1/admin/accounting/journal-entries/$id/reverse")
         ->assertCreated();
 
-    expect(JournalEntryHeader::find($e['id'])->status)->toBe('reversed')
+    expect(JournalEntryHeader::find($id)->status)->toBe('reversed')
         ->and(round((float) LedgerAccount::where('posting_role', 'cash')->value('balance'), 2))->toBe(round($before, 2));
 
-    $this->actingAs($this->admin)->postJson("/api/v1/admin/accounting/journal-entries/{$e['id']}/reverse")
+    $this->actingAs($this->admin)->postJson("/api/v1/admin/accounting/journal-entries/$id/reverse")
         ->assertStatus(422);
 });
