@@ -29,72 +29,10 @@ class PurchaseRequestController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'phone' => 'required|string|max:20',
-            'email' => 'nullable|email|max:255',
-            'address' => 'nullable|string|max:1000',
-            'notes' => 'nullable|string|max:2000',
-            // The rep who raised the order from the mobile app. Honoured only
-            // with that rep's login token (see TrustedEmployee); a shopper
-            // checking out on their own sends none.
-            'employee_id' => 'nullable|integer|exists:employees,id',
-            'items' => 'nullable|array',
-            'items.*.product_id' => 'nullable|integer|exists:products,id',
-            // The storefront lists each variant as its own product; a line for
-            // one names it here so the order is priced at the variant's price.
-            'items.*.variant_id' => 'nullable|integer|exists:product_variants,id',
-            'items.*.product_name' => 'required_without:items.*.product_id|nullable|string|max:255',
-            'items.*.quantity' => 'required_with:items|integer|min:1',
-            'items.*.notes' => 'nullable|string|max:500',
-            'items.*.allocations' => 'nullable|array',
-            'items.*.allocations.*.warehouse_id' => 'required|integer|exists:warehouses,id',
-            'items.*.allocations.*.quantity' => 'required|integer|min:1',
-        ], [
-            'name.required' => 'الاسم مطلوب',
-            'phone.required' => 'رقم الهاتف مطلوب',
-            'email.email' => 'البريد الإلكتروني غير صحيح',
-            'employee_id.exists' => 'الموظف المحدد غير موجود',
-            'items.*.product_id.exists' => 'أحد المنتجات المحددة غير موجود',
-            'items.*.product_name.required_without' => 'اسم المنتج مطلوب',
-            'items.*.quantity.required_with' => 'الكمية مطلوبة',
-            'items.*.quantity.min' => 'الكمية يجب أن تكون 1 على الأقل',
-            'items.*.allocations.*.warehouse_id.exists' => 'أحد المستودعات المحددة غير موجود',
-            'items.*.allocations.*.quantity.min' => 'كمية التخصيص يجب أن تكون 1 على الأقل',
-        ]);
-
-        $customer = Customer::where('phone', $validated['phone'])->first();
-        if (! $customer && ! empty($validated['email'])) {
-            $customer = Customer::where('email', $validated['email'])->first();
-        }
+        $validated = $this->validateStoreRequest($request);
 
         $staff = TrustedEmployee::staff();
-
-        if ($customer && $staff) {
-            $customer->update([
-                'name' => $validated['name'],
-                'phone' => $validated['phone'],
-                'email' => $validated['email'] ?? $customer->email,
-                'address' => $validated['address'] ?? $customer->address,
-            ]);
-        } elseif ($customer) {
-            // A guest who types an existing customer's phone number must not
-            // be able to rename that customer or move their address: only
-            // what is still missing is filled in.
-            $customer->update(array_filter([
-                'email' => $customer->email ? null : ($validated['email'] ?? null),
-                'address' => $customer->address ? null : ($validated['address'] ?? null),
-            ]));
-        } else {
-            $customer = Customer::create([
-                'name' => $validated['name'],
-                'phone' => $validated['phone'],
-                'email' => $validated['email'] ?? null,
-                'address' => $validated['address'] ?? null,
-                'source' => 'purchase_request',
-                'status' => 'active',
-            ]);
-        }
+        $customer = $this->resolveCustomer($validated, $staff);
 
         // The rep who took the sale owns both the order and, from now on, the
         // customer: the order used to arrive with nobody named on it, so it
@@ -105,60 +43,7 @@ class PurchaseRequestController extends Controller
             $customer->assignEmployee($employeeId);
         }
 
-        $subtotal = 0;
-        $itemsData = [];
-        if (! empty($validated['items'])) {
-            foreach ($validated['items'] as $item) {
-                $unitPrice = 0;
-                $itemTotal = 0;
-                $productId = null;
-
-                if (! empty($item['product_id'])) {
-                    $product = Product::find($item['product_id']);
-                } else {
-                    $product = Product::where('name_ar', $item['product_name'])
-                        ->orWhere('name_en', $item['product_name'])
-                        ->orWhere('sku', $item['product_name'])
-                        ->first();
-                }
-
-                $variant = $product && ! empty($item['variant_id'])
-                    ? ProductVariant::where('product_id', $product->id)->find($item['variant_id'])
-                    : null;
-
-                if ($product) {
-                    $productId = $product->id;
-                    $unitPrice = $product->price ?? 0;
-                    if ($variant) {
-                        $variant->setRelation('product', $product);
-                        $unitPrice = $variant->sellingPrice();
-                    }
-                    $itemTotal = $unitPrice * $item['quantity'];
-                }
-
-                // The storefront cart plans its warehouse split up front and
-                // sends it along; when the plan is absent (older clients, or a
-                // quick checkout) the order stays a draft with no allocations.
-                $allocations = $item['allocations'] ?? [];
-
-                if ($allocations !== []) {
-                    $this->assertAllocationsSum($allocations, $item['quantity']);
-                }
-
-                $itemsData[] = [
-                    'product_id' => $productId,
-                    'variant_id' => $variant?->id,
-                    'product_name' => $item['product_name']
-                        ?? ($variant ? $variant->displayName($product->name_ar ?? $product->name_en) : ($product->name_ar ?? $product->name_en ?? '')),
-                    'quantity' => $item['quantity'],
-                    'unit_price' => $unitPrice,
-                    'total_price' => $itemTotal,
-                    'notes' => $item['notes'] ?? null,
-                    'allocations' => $allocations,
-                ];
-                $subtotal += $itemTotal;
-            }
-        }
+        [$itemsData, $subtotal] = $this->buildItems($validated['items'] ?? [], $staff);
 
         $salesOrder = SalesOrder::create([
             // Derived from the last id under a lock — counting reuses a number
@@ -204,6 +89,150 @@ class PurchaseRequestController extends Controller
                 'assigned_employee_id' => $salesOrder->assigned_employee_id,
             ],
         ], 201);
+    }
+
+    /** Validates a purchase request. @return array<string, mixed> */
+    private function validateStoreRequest(Request $request): array
+    {
+        return $request->validate([
+            'name' => 'required|string|max:255',
+            'phone' => 'required|string|max:20',
+            'email' => 'nullable|email|max:255',
+            'address' => 'nullable|string|max:1000',
+            'notes' => 'nullable|string|max:2000',
+            // The rep who raised the order from the mobile app. Honoured only
+            // with that rep's login token (see TrustedEmployee); a shopper
+            // checking out on their own sends none.
+            'employee_id' => 'nullable|integer|exists:employees,id',
+            'items' => 'nullable|array',
+            'items.*.product_id' => 'nullable|integer|exists:products,id',
+            // The storefront lists each variant as its own product; a line for
+            // one names it here so the order is priced at the variant's price.
+            'items.*.variant_id' => 'nullable|integer|exists:product_variants,id',
+            'items.*.product_name' => 'required_without:items.*.product_id|nullable|string|max:255',
+            'items.*.quantity' => 'required_with:items|integer|min:1',
+            'items.*.notes' => 'nullable|string|max:500',
+            'items.*.allocations' => 'nullable|array',
+            'items.*.allocations.*.warehouse_id' => 'required|integer|exists:warehouses,id',
+            'items.*.allocations.*.quantity' => 'required|integer|min:1',
+        ], [
+            'name.required' => 'الاسم مطلوب',
+            'phone.required' => 'رقم الهاتف مطلوب',
+            'email.email' => 'البريد الإلكتروني غير صحيح',
+            'employee_id.exists' => 'الموظف المحدد غير موجود',
+            'items.*.product_id.exists' => 'أحد المنتجات المحددة غير موجود',
+            'items.*.product_name.required_without' => 'اسم المنتج مطلوب',
+            'items.*.quantity.required_with' => 'الكمية مطلوبة',
+            'items.*.quantity.min' => 'الكمية يجب أن تكون 1 على الأقل',
+            'items.*.allocations.*.warehouse_id.exists' => 'أحد المستودعات المحددة غير موجود',
+            'items.*.allocations.*.quantity.min' => 'كمية التخصيص يجب أن تكون 1 على الأقل',
+        ]);
+    }
+
+    /**
+     * Finds the customer by phone or email, or creates one. Staff may update the
+     * customer's details; a guest only fills in what is still missing.
+     */
+    private function resolveCustomer(array $validated, $staff): Customer
+    {
+        $customer = Customer::where('phone', $validated['phone'])->first();
+        if (! $customer && ! empty($validated['email'])) {
+            $customer = Customer::where('email', $validated['email'])->first();
+        }
+
+        if ($customer && $staff) {
+            $customer->update([
+                'name' => $validated['name'],
+                'phone' => $validated['phone'],
+                'email' => $validated['email'] ?? $customer->email,
+                'address' => $validated['address'] ?? $customer->address,
+            ]);
+        } elseif ($customer) {
+            // A guest who types an existing customer's phone number must not
+            // be able to rename that customer or move their address: only
+            // what is still missing is filled in.
+            $customer->update(array_filter([
+                'email' => $customer->email ? null : ($validated['email'] ?? null),
+                'address' => $customer->address ? null : ($validated['address'] ?? null),
+            ]));
+        } else {
+            $customer = Customer::create([
+                'name' => $validated['name'],
+                'phone' => $validated['phone'],
+                'email' => $validated['email'] ?? null,
+                'address' => $validated['address'] ?? null,
+                'source' => 'purchase_request',
+                'status' => 'active',
+            ]);
+        }
+
+        return $customer;
+    }
+
+    /**
+     * Prices the requested lines and checks any warehouse plan the caller may send.
+     *
+     * @return array{0: list<array<string, mixed>>, 1: float|int} lines and subtotal
+     */
+    private function buildItems(array $items, $staff): array
+    {
+        $subtotal = 0;
+        $itemsData = [];
+        if (! empty($items)) {
+            foreach ($items as $item) {
+                $unitPrice = 0;
+                $itemTotal = 0;
+                $productId = null;
+
+                if (! empty($item['product_id'])) {
+                    $product = Product::find($item['product_id']);
+                } else {
+                    $product = Product::where('name_ar', $item['product_name'])
+                        ->orWhere('name_en', $item['product_name'])
+                        ->orWhere('sku', $item['product_name'])
+                        ->first();
+                }
+
+                $variant = $product && ! empty($item['variant_id'])
+                    ? ProductVariant::where('product_id', $product->id)->find($item['variant_id'])
+                    : null;
+
+                if ($product) {
+                    $productId = $product->id;
+                    $unitPrice = $product->price ?? 0;
+                    if ($variant) {
+                        $variant->setRelation('product', $product);
+                        $unitPrice = $variant->sellingPrice();
+                    }
+                    $itemTotal = $unitPrice * $item['quantity'];
+                }
+
+                // A rep's app plans its warehouse split up front and sends it
+                // along. A guest's plan is not taken: which warehouse stock is
+                // promised from is staff's call, made when they confirm the
+                // draft — the same path as an older client that sends none.
+                $allocations = $staff ? ($item['allocations'] ?? []) : [];
+
+                if ($allocations !== []) {
+                    $this->assertAllocationsSum($allocations, $item['quantity']);
+                }
+
+                $itemsData[] = [
+                    'product_id' => $productId,
+                    'variant_id' => $variant?->id,
+                    'product_name' => $item['product_name']
+                        ?? ($variant ? $variant->displayName($product->name_ar ?? $product->name_en) : ($product->name_ar ?? $product->name_en ?? '')),
+                    'quantity' => $item['quantity'],
+                    'unit_price' => $unitPrice,
+                    'total_price' => $itemTotal,
+                    'notes' => $item['notes'] ?? null,
+                    'allocations' => $allocations,
+                ];
+                $subtotal += $itemTotal;
+            }
+        }
+
+        return [$itemsData, $subtotal];
     }
 
     /**

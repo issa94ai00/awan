@@ -403,57 +403,7 @@ class InvoiceController extends Controller
     public function store(Request $request, GoodsIssueService $goods): JsonResponse
     {
         try {
-            $validated = $request->validate([
-                'customer_id' => 'nullable|integer|exists:customers,id',
-                'items' => 'required|array|min:1',
-                // Who made the sale. Optional — a counter sale has no rep.
-                'assigned_employee_id' => 'nullable|integer|exists:employees,id',
-                'items.*.product_id' => 'required|integer|exists:products,id',
-                // One size or colour of the product. Stock is counted per
-                // product; the line keeps the variant and is named for it.
-                'items.*.product_variant_id' => 'nullable|integer|exists:product_variants,id',
-                'items.*.quantity' => 'required|integer|min:1',
-                'items.*.unit_price' => 'required|numeric|min:0',
-                'items.*.notes' => 'nullable|string|max:500',
-                'items.*.product_unit_id' => 'nullable|integer|exists:product_units,id',
-                // Where each line is taken from. Optional only so an install
-                // with a single warehouse need not repeat itself; with more
-                // than one, GoodsIssueService refuses to guess.
-                'items.*.warehouse_id' => 'nullable|integer|exists:warehouses,id',
-                'tax' => 'nullable|numeric|min:0',
-                'discount' => 'nullable|numeric|min:0',
-                // The rates the seller typed. When either is sent it decides
-                // the figure above, which is then ignored — see
-                // resolveCharges(). Capped at 100: a discount cannot take off
-                // more than the whole of the goods, and a tax that doubles them
-                // is a typo, not a rate.
-                'tax_percent' => 'nullable|numeric|min:0|max:100',
-                'discount_percent' => 'nullable|numeric|min:0|max:100',
-                // What the customer handed over. Anything short of the total
-                // stays on their account as a receivable; anything over leaves
-                // them in credit.
-                'paid_amount' => 'nullable|numeric|min:0',
-                'payment_method' => 'nullable|string|in:cash,card,transfer,check',
-                'notes' => 'nullable|string|max:2000',
-                'status' => 'nullable|string|in:pending,confirmed,processing,shipped,delivered,cancelled',
-                'expenses' => 'nullable|array',
-                'expenses.*.description' => 'required_with:expenses|string|max:255',
-                'expenses.*.amount' => 'required_with:expenses|numeric|min:0',
-                'expenses.*.category' => 'nullable|string|in:shipping,packaging,handling,other',
-                'expenses.*.status' => 'nullable|string|in:pending,paid,approved,rejected',
-                'expenses.*.notes' => 'nullable|string|max:1000',
-            ], [
-                'items.required' => 'يجب إضافة منتج واحد على الأقل',
-                'items.min' => 'يجب إضافة منتج واحد على الأقل',
-                'items.*.product_id.required' => 'معرف المنتج مطلوب',
-                'items.*.product_id.exists' => 'المنتج غير موجود',
-                'items.*.quantity.required' => 'الكمية مطلوبة',
-                'items.*.quantity.min' => 'الكمية يجب أن تكون على الأقل 1',
-                'items.*.unit_price.required' => 'السعر مطلوب',
-                'items.*.unit_price.min' => 'السعر يجب أن يكون 0 أو أكثر',
-                'payment_method.in' => 'طريقة الدفع غير صالحة',
-                'status.in' => 'الحالة غير صالحة',
-            ]);
+            $validated = $this->validateStoreRequest($request);
 
             // A rep invoices their own customers only (a walk-in sale has none).
             if (isset($validated['customer_id'])) {
@@ -471,107 +421,10 @@ class InvoiceController extends Controller
                 $validated['assigned_employee_id'] = Customer::find($validated['customer_id'])?->defaultSalesRepId();
             }
 
-            // Fetch all products to get their names
-            $productIds = collect($validated['items'])->pluck('product_id')->unique()->toArray();
-            $products = Product::whereIn('id', $productIds)->get()->keyBy('id');
-            $variants = ProductVariant::forLines($validated['items']);
+            [$itemsData, $subtotal] = $this->buildSaleLines($validated, $goods);
 
-            // Fetch all product units if any
-            $unitIds = collect($validated['items'])->pluck('product_unit_id')->filter()->unique()->toArray();
-            $units = ProductUnit::whereIn('id', $unitIds)->get()->keyBy('id');
-
-            // Calculate subtotal from items
-            $subtotal = 0;
-            $itemsData = [];
-
-            foreach ($validated['items'] as $item) {
-                $product = $products->get($item['product_id']);
-
-                if (!$product) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'المنتج غير موجود: ' . $item['product_id'],
-                    ], 422);
-                }
-
-                $unitPrice = (float) $item['unit_price'];
-                $quantity = (int) $item['quantity'];
-                $totalPrice = $unitPrice * $quantity;
-
-                // Get unit info if provided
-                $unit = null;
-                $unitName = null;
-                $unitMultiplier = 1;
-                $unitId = null;
-
-                if (!empty($item['product_unit_id'])) {
-                    $unit = $units->get($item['product_unit_id']);
-                    // The unit decides how much stock the line moves, so one
-                    // that belongs to another product is dropped, not trusted.
-                    if ($unit && (int) $unit->product_id === (int) $item['product_id']) {
-                        $unitId = $unit->id;
-                        $unitName = $unit->name;
-                        $unitMultiplier = ProductUnit::stockFactorOf($unit->base_unit_multiplier);
-                    }
-                }
-
-                // Where this line comes off the shelf. Named per line so a sale
-                // can draw a fast-moving item from the branch and the rest from
-                // the main store — and so the cost entry can credit the holding
-                // the goods actually left.
-                $lineWarehouseId = $goods->requireWarehouse(
-                    $item['warehouse_id'] ?? ($validated['warehouse_id'] ?? null)
-                );
-
-                $variant = $variants->get((int) ($item['product_variant_id'] ?? 0));
-
-                $itemsData[] = [
-                    'product_id' => $item['product_id'],
-                    'product_variant_id' => $variant?->id,
-                    'warehouse_id' => $lineWarehouseId,
-                    'product_name' => $this->lineName($product, $variant),
-                    'quantity' => $quantity,
-                    'unit_price' => $unitPrice,
-                    'total_price' => $totalPrice,
-                    'notes' => $item['notes'] ?? null,
-                    'product_unit_id' => $unitId,
-                    'unit_name' => $unitName,
-                    'unit_multiplier' => $unitMultiplier,
-                    // Kept beside the line for the issue below; not a column.
-                    '_unit_cost' => (float) ($product->cost_price ?? 0),
-                ];
-
-                $subtotal += $totalPrice;
-            }
-
-            /*
-             * Refuse a sale the shelves cannot cover, before anything is written.
-             *
-             * The previous behaviour was to save the invoice and issue the stock
-             * with `allow_negative`, which drove the warehouse below zero and
-             * left a document claiming goods that were not there. A negative
-             * shelf is not a smaller number — it is a record that has stopped
-             * describing anything, and it corrupts every valuation and reorder
-             * decision that reads it afterwards.
-             */
-            $shortages = $goods->shortagesFor(array_map(
-                fn (array $line) => [
-                    'product_id' => (int) $line['product_id'],
-                    // In base units: two boxes of twelve need 24 on the shelf.
-                    'quantity' => (int) $line['quantity'] * (int) $line['unit_multiplier'],
-                    'warehouse_id' => (int) $line['warehouse_id'],
-                ],
-                $itemsData
-            ));
-
-            if ($shortages !== []) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'المخزون لا يغطي هذا البيع في المستودعات المحددة.',
-                    // Named per product and warehouse so the screen can point at
-                    // the exact line rather than making the seller hunt for it.
-                    'data' => ['shortages' => $this->describeShortages($shortages)],
-                ], 422);
+            if ($refusal = $this->shortageRefusal($itemsData, $goods)) {
+                return $refusal;
             }
 
             // Calculate totals
@@ -594,6 +447,16 @@ class InvoiceController extends Controller
 
             $paidAmount = round((float) ($validated['paid_amount'] ?? 0), 5);
 
+            // A walk-in sale has no account to carry a balance: it is paid in
+            // full or not made.
+            if (empty($validated['customer_id']) && $paidAmount + 0.005 < round($total, 5)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'البيع لزبون نقدي يتطلب تسديد كامل المبلغ، أو اختر عميلاً للبيع الآجل',
+                    'errors' => ['paid_amount' => ['البيع لزبون نقدي يتطلب تسديد كامل المبلغ']],
+                ], 422);
+            }
+
             // The header's warehouse, when every line agrees on one. A sale
             // split across warehouses (see items.*.warehouse_id) has no single
             // warehouse to report at the header level, so it stays null rather
@@ -607,175 +470,15 @@ class InvoiceController extends Controller
             $invoice = new Invoice();
             $invoiceNumber = $invoice->generateInvoiceNumber();
 
-            /*
-             * Everything that has to exist together, or not at all.
-             *
-             * The header, its lines, the delivery charges raised with it and the
-             * customer's settlement were written as separate statements with no
-             * transaction around them. A failure part-way through the item loop
-             * left a saved invoice whose stored subtotal and total had been
-             * computed from lines that were never written — a document that
-             * disagreed with itself, and a receivable posted for an amount
-             * nothing on the invoice added up to.
-             *
-             * Stock issuing and ledger posting stay outside on purpose. Both
-             * already swallow their own failures into warnings, because the
-             * deliberate design here is that a bookkeeping problem must not
-             * discard an invoice the user has successfully created.
-             */
-            [$invoice, $createdExpenses, $settlement, $stockWarnings] = DB::transaction(function () use (
-                $validated,
-                $itemsData,
-                $invoiceNumber,
-                $subtotal,
-                $tax,
-                $discount,
-                $taxPercent,
-                $discountPercent,
-                $additionalCharges,
-                $total,
-                $paidAmount,
-                $headerWarehouseId,
-                $goods
-            ) {
-            // Create invoice
-            $invoice = Invoice::create([
-                'invoice_number' => $invoiceNumber,
-                'customer_id' => $validated['customer_id'] ?? null,
-                'assigned_employee_id' => $validated['assigned_employee_id'] ?? null,
-                'warehouse_id' => $headerWarehouseId,
-                'subtotal' => $subtotal,
-                'tax' => $tax,
-                'discount' => $discount,
-                'tax_percent' => $taxPercent,
-                'discount_percent' => $discountPercent,
-                'additional_charges' => $additionalCharges,
-                'total' => $total,
-                'paid_amount' => $paidAmount,
-                'due_amount' => max(0, round($total - $paidAmount, 5)),
-                'payment_method' => $validated['payment_method'] ?? Invoice::PAYMENT_CASH,
-                'status' => $validated['status'] ?? Invoice::STATUS_PENDING,
-                'notes' => $validated['notes'] ?? null,
-                'created_by' => auth()->check() ? auth()->id() : null,
-                'paid_at' => ($validated['status'] ?? null) === Invoice::STATUS_DELIVERED ? now() : null,
-            ]);
-
-            // Create invoice items
-            foreach ($itemsData as $itemData) {
-                $itemData['invoice_id'] = $invoice->id;
-                // Carried alongside the line for the stock issue, not a column.
-                unset($itemData['_unit_cost']);
-                InvoiceItem::create($itemData);
-            }
-
-            // Create expenses if provided.
-            //
-            // These are two separate economic events and both belong in the
-            // books: the customer is billed for delivery (revenue, already in
-            // the invoice entry) and the carrier has to be paid (a cost). Only
-            // ExpenseController used to post these, so charges added through
-            // the invoice form never reached the ledger at all.
-            $createdExpenses = [];
-            if (isset($validated['expenses']) && is_array($validated['expenses'])) {
-                foreach ($validated['expenses'] as $expense) {
-                    if (!empty($expense['description']) && (float) ($expense['amount'] ?? 0) > 0) {
-                        $createdExpenses[] = Expense::create([
-                            'expense_number' => DocumentNumbers::format('expense', ((int) Expense::max('id')) + 1),
-                            'invoice_id' => $invoice->id,
-                            'sales_order_id' => $invoice->sales_order_id,
-                            'customer_id' => $invoice->customer_id,
-                            'description' => $expense['description'],
-                            'amount' => (float) $expense['amount'],
-                            'category' => $expense['category'] ?? 'other',
-                            'expense_date' => now(),
-                            'status' => $expense['status'] ?? Expense::STATUS_PENDING,
-                            'notes' => $expense['notes'] ?? null,
-                            'created_by' => auth()->check() ? auth()->id() : null,
-                            // The books' own currency: a literal here made the
-                            // expense claim a currency nobody had configured.
-                            'currency' => base_currency_code(),
-                            'exchange_rate' => 1.0000,
-                        ]);
-                    }
-                }
-            }
-
-            /*
-             * Take the goods off the named shelf, and tell the ledger what they
-             * cost, in one step.
-             *
-             * Both halves were wrong before. The issue passed no warehouse, so
-             * it fell through to "whichever warehouse has the lowest id" and
-             * drew every sale from there regardless of where the goods were —
-             * driving that one negative while the real one stayed full. And no
-             * cost entry was posted at all, so every invoice raised here
-             * overstated gross profit by the entire cost of the goods.
-             *
-             * `GoodsIssueService` is the same code the sales-order shipment
-             * uses. Sharing it is the point: two copies of "move stock and post
-             * its cost" is how the two paths end up disagreeing about margin.
-             */
-            $stockWarnings = [];
-
-            try {
-                $issued = $goods->issueAndPostCost(
-                    lines: $invoice->items()->get()->map(fn ($line) => [
-                        'product_id' => (int) $line->product_id,
-                        'product_variant_id' => $line->product_variant_id ? (int) $line->product_variant_id : null,
-                        'quantity' => $line->baseQuantity(),
-                        'warehouse_id' => (int) $line->warehouse_id,
-                        'unit_cost' => (float) ($line->product?->cost_price ?? 0),
-                        // Keyed per line, so a retry is a no-op rather than a
-                        // second withdrawal.
-                        'movement_key' => 'invoice:'.$invoice->id.':item:'.$line->id,
-                    ])->all(),
-                    postingKey: 'invoice_cogs:'.$invoice->id,
-                    label: 'فاتورة '.$invoice->invoice_number,
-                    reference: $invoice,
-                    currency: $invoice->currency,
-                    reason: 'بيع - فاتورة '.$invoice->invoice_number,
-                    movementReference: 'invoice',
-                    movementSource: $invoice->id,
-                );
-
-                $this->recordLineCosts($invoice, $issued['cost_by_key'] ?? []);
-                $this->moveVariantCounts($invoice, 'invoice', -1);
-            } catch (\Throwable $e) {
-                // Coverage was checked before the invoice was written, so this
-                // is an unexpected failure rather than a routine shortfall. It
-                // is surfaced instead of discarding a saved sale.
-                $stockWarnings[] = $e->getMessage();
-                report($e);
-            }
-
-            // Settle the customer's account.
-            //
-            // The sale puts the whole total on their receivable, then whatever
-            // they actually paid comes straight back off it. Netting the two
-            // instead of recording both would lose the payment entirely — there
-            // would be no cash movement anywhere in the books.
-            $settlement = $this->settleCustomerAccount($invoice, $paidAmount, $validated['payment_method'] ?? null);
-
-                return [$invoice, $createdExpenses, $settlement, $stockWarnings];
-            });
+            [$invoice, $createdExpenses, $settlement, $stockWarnings] = $this->persistInvoice(
+                $validated, $itemsData, $invoiceNumber, $subtotal, $tax, $discount, $taxPercent,
+                $discountPercent, $additionalCharges, $total, $paidAmount, $headerWarehouseId, $goods
+            );
 
             // Feed the general ledger. Posting is idempotent and balanced or it
             // throws, so a ledger problem must not silently swallow a saved
             // invoice — it is reported alongside the successful creation.
-            $postingError = null;
-            $ledger = app(\App\Services\Accounting\LedgerPostingService::class);
-            try {
-                $ledger->postInvoice($invoice);
-                if ($settlement['payment']) {
-                    $ledger->postPayment($settlement['payment']);
-                }
-                foreach ($createdExpenses as $createdExpense) {
-                    $ledger->postExpense($createdExpense);
-                }
-            } catch (\Throwable $e) {
-                $postingError = $e->getMessage();
-                report($e);
-            }
+            $postingError = $this->postInvoiceToLedger($invoice, $settlement, $createdExpenses);
 
             return response()->json([
                 'success' => true,
@@ -821,6 +524,381 @@ class InvoiceController extends Controller
         }
     }
 
+    /** A 422 naming the short lines when the shelves cannot cover the sale, else null. */
+    private function shortageRefusal(array $itemsData, GoodsIssueService $goods): ?JsonResponse
+    {
+        /*
+         * Refuse a sale the shelves cannot cover, before anything is written.
+         *
+         * The previous behaviour was to save the invoice and issue the stock
+         * with `allow_negative`, which drove the warehouse below zero and
+         * left a document claiming goods that were not there. A negative
+         * shelf is not a smaller number — it is a record that has stopped
+         * describing anything, and it corrupts every valuation and reorder
+         * decision that reads it afterwards.
+         */
+        $shortages = $goods->shortagesFor(array_map(
+            fn (array $line) => [
+                'product_id' => (int) $line['product_id'],
+                // In base units: two boxes of twelve need 24 on the shelf.
+                'quantity' => (int) $line['quantity'] * (int) $line['unit_multiplier'],
+                'warehouse_id' => (int) $line['warehouse_id'],
+            ],
+            $itemsData
+        ));
+
+        if ($shortages === []) {
+            return null;
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'المخزون لا يغطي هذا البيع في المستودعات المحددة.',
+            // Named per product and warehouse so the screen can point at
+            // the exact line rather than making the seller hunt for it.
+            'data' => ['shortages' => $this->describeShortages($shortages)],
+        ], 422);
+    }
+
+        /*
+         * Everything that has to exist together, or not at all.
+         *
+         * The header, its lines, the delivery charges raised with it and the
+         * customer's settlement were written as separate statements with no
+         * transaction around them. A failure part-way through the item loop
+         * left a saved invoice whose stored subtotal and total had been
+         * computed from lines that were never written — a document that
+         * disagreed with itself, and a receivable posted for an amount
+         * nothing on the invoice added up to.
+         *
+         * Stock issuing and ledger posting stay outside on purpose. Both
+         * already swallow their own failures into warnings, because the
+         * deliberate design here is that a bookkeeping problem must not
+         * discard an invoice the user has successfully created.
+         */
+    private function persistInvoice(array $validated, array $itemsData, string $invoiceNumber, $subtotal, $tax, $discount, $taxPercent, $discountPercent, $additionalCharges, $total, $paidAmount, $headerWarehouseId, GoodsIssueService $goods): array
+    {
+        return DB::transaction(function () use ($validated, $itemsData, $invoiceNumber, $subtotal, $tax, $discount, $taxPercent, $discountPercent, $additionalCharges, $total, $paidAmount, $headerWarehouseId, $goods) {
+            $invoice = $this->createInvoiceWithItems($validated, $itemsData, $invoiceNumber, $subtotal, $tax, $discount, $taxPercent, $discountPercent, $additionalCharges, $total, $paidAmount, $headerWarehouseId);
+
+            $createdExpenses = $this->createInvoiceExpenses($invoice, $validated['expenses'] ?? null);
+
+            $stockWarnings = $this->issueInvoiceStock($invoice, $goods);
+
+            // Settle the customer's account.
+            //
+            // The sale puts the whole total on their receivable, then whatever
+            // they actually paid comes straight back off it. Netting the two
+            // instead of recording both would lose the payment entirely — there
+            // would be no cash movement anywhere in the books.
+            $settlement = $this->settleCustomerAccount($invoice, $paidAmount, $validated['payment_method'] ?? null);
+
+            return [$invoice, $createdExpenses, $settlement, $stockWarnings];
+        });
+    }
+
+    /** Validates a new invoice. @return array<string, mixed> */
+    private function validateStoreRequest(Request $request): array
+    {
+        return $request->validate([
+            'customer_id' => 'nullable|integer|exists:customers,id',
+            'items' => 'required|array|min:1',
+            // Who made the sale. Optional — a counter sale has no rep.
+            'assigned_employee_id' => 'nullable|integer|exists:employees,id',
+            'items.*.product_id' => 'required|integer|exists:products,id',
+            // One size or colour of the product. Stock is counted per
+            // product; the line keeps the variant and is named for it.
+            'items.*.product_variant_id' => 'nullable|integer|exists:product_variants,id',
+            'items.*.quantity' => 'required|integer|min:1',
+            'items.*.unit_price' => 'required|numeric|min:0',
+            'items.*.notes' => 'nullable|string|max:500',
+            'items.*.product_unit_id' => 'nullable|integer|exists:product_units,id',
+            // Where each line is taken from. Optional only so an install
+            // with a single warehouse need not repeat itself; with more
+            // than one, GoodsIssueService refuses to guess.
+            'items.*.warehouse_id' => 'nullable|integer|exists:warehouses,id',
+            'tax' => 'nullable|numeric|min:0',
+            'discount' => 'nullable|numeric|min:0',
+            // The rates the seller typed. When either is sent it decides
+            // the figure above, which is then ignored — see
+            // resolveCharges(). Capped at 100: a discount cannot take off
+            // more than the whole of the goods, and a tax that doubles them
+            // is a typo, not a rate.
+            'tax_percent' => 'nullable|numeric|min:0|max:100',
+            'discount_percent' => 'nullable|numeric|min:0|max:100',
+            // What the customer handed over. Anything short of the total
+            // stays on their account as a receivable; anything over leaves
+            // them in credit.
+            'paid_amount' => 'nullable|numeric|min:0',
+            'payment_method' => 'nullable|string|in:cash,card,transfer,check',
+            'notes' => 'nullable|string|max:2000',
+            'status' => 'nullable|string|in:pending,confirmed,processing,shipped,delivered,cancelled',
+            'expenses' => 'nullable|array',
+            'expenses.*.description' => 'required_with:expenses|string|max:255',
+            'expenses.*.amount' => 'required_with:expenses|numeric|min:0',
+            'expenses.*.category' => 'nullable|string|in:shipping,packaging,handling,other',
+            'expenses.*.status' => 'nullable|string|in:pending,paid,approved,rejected',
+            'expenses.*.notes' => 'nullable|string|max:1000',
+        ], [
+            'items.required' => 'يجب إضافة منتج واحد على الأقل',
+            'items.min' => 'يجب إضافة منتج واحد على الأقل',
+            'items.*.product_id.required' => 'معرف المنتج مطلوب',
+            'items.*.product_id.exists' => 'المنتج غير موجود',
+            'items.*.quantity.required' => 'الكمية مطلوبة',
+            'items.*.quantity.min' => 'الكمية يجب أن تكون على الأقل 1',
+            'items.*.unit_price.required' => 'السعر مطلوب',
+            'items.*.unit_price.min' => 'السعر يجب أن يكون 0 أو أكثر',
+            'payment_method.in' => 'طريقة الدفع غير صالحة',
+            'status.in' => 'الحالة غير صالحة',
+        ]);
+    }
+
+    /**
+     * Prices the sale's lines, resolving each one's product, unit, variant and
+     * source warehouse.
+     *
+     * @return array{0: list<array<string, mixed>>, 1: float|int} lines and subtotal
+     */
+    private function buildSaleLines(array $validated, GoodsIssueService $goods): array
+    {
+        // Fetch all products to get their names
+        $productIds = collect($validated['items'])->pluck('product_id')->unique()->toArray();
+        $products = Product::whereIn('id', $productIds)->get()->keyBy('id');
+        $variants = ProductVariant::forLines($validated['items']);
+
+        // Fetch all product units if any
+        $unitIds = collect($validated['items'])->pluck('product_unit_id')->filter()->unique()->toArray();
+        $units = ProductUnit::whereIn('id', $unitIds)->get()->keyBy('id');
+
+        // Calculate subtotal from items
+        $subtotal = 0;
+        $itemsData = [];
+
+        foreach ($validated['items'] as $item) {
+            $product = $products->get($item['product_id']);
+
+            if (!$product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'المنتج غير موجود: ' . $item['product_id'],
+                ], 422);
+            }
+
+            $unitPrice = (float) $item['unit_price'];
+            $quantity = (int) $item['quantity'];
+            $totalPrice = $unitPrice * $quantity;
+
+            // Get unit info if provided
+            $unit = null;
+            $unitName = null;
+            $unitMultiplier = 1;
+            $unitId = null;
+
+            if (!empty($item['product_unit_id'])) {
+                $unit = $units->get($item['product_unit_id']);
+                // The unit decides how much stock the line moves, so one
+                // that belongs to another product is dropped, not trusted.
+                if ($unit && (int) $unit->product_id === (int) $item['product_id']) {
+                    $unitId = $unit->id;
+                    $unitName = $unit->name;
+                    $unitMultiplier = ProductUnit::stockFactorOf($unit->base_unit_multiplier);
+                }
+            }
+
+            // Where this line comes off the shelf. Named per line so a sale
+            // can draw a fast-moving item from the branch and the rest from
+            // the main store — and so the cost entry can credit the holding
+            // the goods actually left.
+            $lineWarehouseId = $goods->requireWarehouse(
+                $item['warehouse_id'] ?? ($validated['warehouse_id'] ?? null)
+            );
+
+            $variant = $variants->get((int) ($item['product_variant_id'] ?? 0));
+
+            $itemsData[] = [
+                'product_id' => $item['product_id'],
+                'product_variant_id' => $variant?->id,
+                'warehouse_id' => $lineWarehouseId,
+                'product_name' => $this->lineName($product, $variant),
+                'quantity' => $quantity,
+                'unit_price' => $unitPrice,
+                'total_price' => $totalPrice,
+                'notes' => $item['notes'] ?? null,
+                'product_unit_id' => $unitId,
+                'unit_name' => $unitName,
+                'unit_multiplier' => $unitMultiplier,
+                // Kept beside the line for the issue below; not a column.
+                '_unit_cost' => (float) ($product->cost_price ?? 0),
+            ];
+
+            $subtotal += $totalPrice;
+        }
+
+        return [$itemsData, $subtotal];
+    }
+
+    /** Writes the invoice header and its lines. Runs inside store()'s transaction. */
+    private function createInvoiceWithItems(array $validated, array $itemsData, string $invoiceNumber, $subtotal, $tax, $discount, $taxPercent, $discountPercent, $additionalCharges, $total, $paidAmount, $headerWarehouseId): Invoice
+    {
+        // Create invoice
+        $invoice = Invoice::create([
+            'invoice_number' => $invoiceNumber,
+            'customer_id' => $validated['customer_id'] ?? null,
+            'assigned_employee_id' => $validated['assigned_employee_id'] ?? null,
+            'warehouse_id' => $headerWarehouseId,
+            'subtotal' => $subtotal,
+            'tax' => $tax,
+            'discount' => $discount,
+            'tax_percent' => $taxPercent,
+            'discount_percent' => $discountPercent,
+            'additional_charges' => $additionalCharges,
+            'total' => $total,
+            'paid_amount' => $paidAmount,
+            'due_amount' => max(0, round($total - $paidAmount, 5)),
+            'payment_method' => $validated['payment_method'] ?? Invoice::PAYMENT_CASH,
+            'status' => $validated['status'] ?? Invoice::STATUS_PENDING,
+            'notes' => $validated['notes'] ?? null,
+            'created_by' => auth()->check() ? auth()->id() : null,
+            'paid_at' => ($validated['status'] ?? null) === Invoice::STATUS_DELIVERED ? now() : null,
+        ]);
+
+        // Create invoice items
+        foreach ($itemsData as $itemData) {
+            $itemData['invoice_id'] = $invoice->id;
+            // Carried alongside the line for the stock issue, not a column.
+            unset($itemData['_unit_cost']);
+            InvoiceItem::create($itemData);
+    }
+
+        return $invoice;
+    }
+
+    /**
+     * Creates the delivery charges raised with the invoice.
+     *
+     * @return list<Expense> to be posted to the ledger once the transaction commits
+     */
+    private function createInvoiceExpenses(Invoice $invoice, mixed $expenses): array
+    {
+        // Create expenses if provided.
+        //
+        // These are two separate economic events and both belong in the
+        // books: the customer is billed for delivery (revenue, already in
+        // the invoice entry) and the carrier has to be paid (a cost). Only
+        // ExpenseController used to post these, so charges added through
+        // the invoice form never reached the ledger at all.
+        $createdExpenses = [];
+        if (is_array($expenses)) {
+            foreach ($expenses as $expense) {
+                if (!empty($expense['description']) && (float) ($expense['amount'] ?? 0) > 0) {
+                    $createdExpenses[] = Expense::create([
+                        'expense_number' => DocumentNumbers::format('expense', ((int) Expense::max('id')) + 1),
+                        'invoice_id' => $invoice->id,
+                        'sales_order_id' => $invoice->sales_order_id,
+                        'customer_id' => $invoice->customer_id,
+                        'description' => $expense['description'],
+                        'amount' => (float) $expense['amount'],
+                        'category' => $expense['category'] ?? 'other',
+                        'expense_date' => now(),
+                        'status' => $expense['status'] ?? Expense::STATUS_PENDING,
+                        'notes' => $expense['notes'] ?? null,
+                        'created_by' => auth()->check() ? auth()->id() : null,
+                        // The books' own currency: a literal here made the
+                        // expense claim a currency nobody had configured.
+                        'currency' => base_currency_code(),
+                        'exchange_rate' => 1.0000,
+                    ]);
+                }
+            }
+    }
+
+        return $createdExpenses;
+    }
+
+    /**
+     * Takes the invoice's goods off their shelves and posts their cost.
+     *
+     * @return list<string> warnings; a failure here never discards the saved sale
+     */
+    private function issueInvoiceStock(Invoice $invoice, GoodsIssueService $goods): array
+    {
+        /*
+         * Take the goods off the named shelf, and tell the ledger what they
+         * cost, in one step.
+         *
+         * Both halves were wrong before. The issue passed no warehouse, so
+         * it fell through to "whichever warehouse has the lowest id" and
+         * drew every sale from there regardless of where the goods were —
+         * driving that one negative while the real one stayed full. And no
+         * cost entry was posted at all, so every invoice raised here
+         * overstated gross profit by the entire cost of the goods.
+         *
+         * `GoodsIssueService` is the same code the sales-order shipment
+         * uses. Sharing it is the point: two copies of "move stock and post
+         * its cost" is how the two paths end up disagreeing about margin.
+         */
+        $stockWarnings = [];
+
+        try {
+            $issued = $goods->issueAndPostCost(
+                lines: $invoice->items()->get()->map(fn ($line) => [
+                    'product_id' => (int) $line->product_id,
+                    'product_variant_id' => $line->product_variant_id ? (int) $line->product_variant_id : null,
+                    'quantity' => $line->baseQuantity(),
+                    'warehouse_id' => (int) $line->warehouse_id,
+                    'unit_cost' => (float) ($line->product?->cost_price ?? 0),
+                    // Keyed per line, so a retry is a no-op rather than a
+                    // second withdrawal.
+                    'movement_key' => 'invoice:'.$invoice->id.':item:'.$line->id,
+                ])->all(),
+                postingKey: 'invoice_cogs:'.$invoice->id,
+                label: 'فاتورة '.$invoice->invoice_number,
+                reference: $invoice,
+                currency: $invoice->currency,
+                reason: 'بيع - فاتورة '.$invoice->invoice_number,
+                movementReference: 'invoice',
+                movementSource: $invoice->id,
+            );
+
+            $this->recordLineCosts($invoice, $issued['cost_by_key'] ?? []);
+            $this->moveVariantCounts($invoice, 'invoice', -1);
+        } catch (\Throwable $e) {
+            // Coverage was checked before the invoice was written, so this
+            // is an unexpected failure rather than a routine shortfall. It
+            // is surfaced instead of discarding a saved sale.
+            $stockWarnings[] = $e->getMessage();
+            report($e);
+    }
+
+        return $stockWarnings;
+    }
+
+    /**
+     * Feeds the general ledger. Posting is idempotent and balanced or it throws;
+     * a ledger problem is returned as a warning rather than discarding the invoice.
+     *
+     * @return string|null the error message, if posting failed
+     */
+    private function postInvoiceToLedger(Invoice $invoice, array $settlement, array $createdExpenses): ?string
+    {
+        $postingError = null;
+        $ledger = app(\App\Services\Accounting\LedgerPostingService::class);
+        try {
+            $ledger->postInvoice($invoice);
+            if ($settlement['payment']) {
+                $ledger->postPayment($settlement['payment']);
+            }
+            foreach ($createdExpenses as $createdExpense) {
+                $ledger->postExpense($createdExpense);
+            }
+        } catch (\Throwable $e) {
+            $postingError = $e->getMessage();
+            report($e);
+    }
+
+        return $postingError;
+    }
+
     /**
      * Show a single invoice with items
      */
@@ -840,10 +918,13 @@ class InvoiceController extends Controller
                 }
             }
 
+            $invoice->load('items.product', 'items.variant', 'expenses', 'customer', 'salesOrder', 'user', 'payments', 'assignedEmployee', 'warehouse');
+            app(\App\Services\Sales\SalesOrderWorkflowService::class)->nameLinesFromOrder($invoice);
+
             return response()->json([
                 'success' => true,
                 'message' => 'تم جلب الفاتورة بنجاح',
-                'data' => new InvoiceResource($invoice->load('items.product', 'items.variant', 'expenses', 'customer', 'salesOrder', 'user', 'payments', 'assignedEmployee', 'warehouse')),
+                'data' => new InvoiceResource($invoice),
             ]);
 
         } catch (\Exception $e) {
@@ -866,49 +947,7 @@ class InvoiceController extends Controller
         $shortages = [];
 
         try {
-            $validated = $request->validate([
-                'customer_id' => 'nullable|integer|exists:customers,id',
-                'items' => 'nullable|array|min:1',
-                'items.*.product_id' => 'required_with:items|integer|exists:products,id',
-                'items.*.product_variant_id' => 'nullable|integer|exists:product_variants,id',
-                'items.*.quantity' => 'required_with:items|integer|min:1',
-                'items.*.unit_price' => 'required_with:items|numeric|min:0',
-                'items.*.notes' => 'nullable|string|max:500',
-                'items.*.product_unit_id' => 'nullable|integer|exists:product_units,id',
-                // Accepted here as it is on creation. The client has always
-                // sent it; this end never read it, so every edit silently
-                // stripped the warehouse off every line — losing the record of
-                // which shelf the goods left, which is the only thing tying a
-                // line to the stock movement that filled it.
-                'items.*.warehouse_id' => 'nullable|integer|exists:warehouses,id',
-                'tax' => 'nullable|numeric|min:0',
-                'discount' => 'nullable|numeric|min:0',
-                // The rates the seller typed. When either is sent it decides
-                // the figure above, which is then ignored — see
-                // resolveCharges(). Capped at 100: a discount cannot take off
-                // more than the whole of the goods, and a tax that doubles them
-                // is a typo, not a rate.
-                'tax_percent' => 'nullable|numeric|min:0|max:100',
-                'discount_percent' => 'nullable|numeric|min:0|max:100',
-                'payment_method' => 'nullable|string|in:cash,card,transfer,check',
-                'notes' => 'nullable|string|max:2000',
-                'status' => 'nullable|string|in:pending,confirmed,processing,shipped,delivered,cancelled',
-                'expenses' => 'nullable|array',
-                'expenses.*.description' => 'required_with:expenses|string|max:255',
-                'expenses.*.amount' => 'required_with:expenses|numeric|min:0',
-                'expenses.*.category' => 'nullable|string|in:shipping,packaging,handling,other',
-                'expenses.*.status' => 'nullable|string|in:pending,paid,approved,rejected',
-                'expenses.*.notes' => 'nullable|string|max:1000',
-            ], [
-                'items.required' => 'يجب إضافة منتج واحد على الأقل',
-                'items.min' => 'يجب إضافة منتج واحد على الأقل',
-                'items.*.product_id.required' => 'معرف المنتج مطلوب',
-                'items.*.product_id.exists' => 'المنتج غير موجود',
-                'items.*.quantity.required' => 'الكمية مطلوبة',
-                'items.*.quantity.min' => 'الكمية يجب أن تكون على الأقل 1',
-                'items.*.unit_price.required' => 'السعر مطلوب',
-                'items.*.unit_price.min' => 'السعر يجب أن يكون 0 أو أكثر',
-            ]);
+            $validated = $this->validateUpdateRequest($request);
 
             // A rep invoices their own customers only; an invoice already on
             // someone else's customer can still be edited if it stays there.
@@ -948,66 +987,7 @@ class InvoiceController extends Controller
 
             // Only process items if they are provided
             if (isset($validated['items'])) {
-                // Fetch all products to get their names
-                $productIds = collect($validated['items'])->pluck('product_id')->unique()->toArray();
-                $products = Product::whereIn('id', $productIds)->get()->keyBy('id');
-                $variants = ProductVariant::forLines($validated['items']);
-
-                // Fetch all product units if any
-                $unitIds = collect($validated['items'])->pluck('product_unit_id')->filter()->unique()->toArray();
-                $units = ProductUnit::whereIn('id', $unitIds)->get()->keyBy('id');
-
-                // Calculate subtotal from items
-                $subtotal = 0;
-                $itemsData = [];
-
-                foreach ($validated['items'] as $item) {
-                    $product = $products->get($item['product_id']);
-
-                    if (!$product) {
-                        return response()->json([
-                            'success' => false,
-                            'message' => 'المنتج غير موجود: ' . $item['product_id'],
-                        ], 422);
-                    }
-
-                    $unitPrice = (float) $item['unit_price'];
-                    $quantity = (int) $item['quantity'];
-                    $totalPrice = $unitPrice * $quantity;
-
-                    // Get unit info if provided
-                    $unit = null;
-                    $unitName = null;
-                    $unitMultiplier = 1;
-                    $unitId = null;
-
-                    if (!empty($item['product_unit_id'])) {
-                        $unit = $units->get($item['product_unit_id']);
-                        if ($unit && (int) $unit->product_id === (int) $item['product_id']) {
-                            $unitId = $unit->id;
-                            $unitName = $unit->name;
-                            $unitMultiplier = ProductUnit::stockFactorOf($unit->base_unit_multiplier);
-                        }
-                    }
-
-                    $variant = $variants->get((int) ($item['product_variant_id'] ?? 0));
-
-                    $itemsData[] = [
-                        'product_id' => $item['product_id'],
-                        'product_variant_id' => $variant?->id,
-                        'warehouse_id' => $item['warehouse_id'] ?? $invoice->warehouse_id,
-                        'product_name' => $this->lineName($product, $variant),
-                        'quantity' => $quantity,
-                        'unit_price' => $unitPrice,
-                        'total_price' => $totalPrice,
-                        'notes' => $item['notes'] ?? null,
-                        'product_unit_id' => $unitId,
-                        'unit_name' => $unitName,
-                        'unit_multiplier' => $unitMultiplier,
-                    ];
-
-                    $subtotal += $totalPrice;
-                }
+                [$itemsData, $subtotal] = $this->buildEditedLines($validated, $invoice);
 
                 // Calculate totals
                 [$tax, $discount, $taxPercent, $discountPercent] = $this->resolveCharges($validated, $subtotal);
@@ -1046,116 +1026,7 @@ class InvoiceController extends Controller
                 $settles = $invoice->status !== Invoice::STATUS_CANCELLED
                     && ($validated['status'] ?? $invoice->status) !== Invoice::STATUS_CANCELLED;
 
-                /*
-                 * Everything the edit touches, or none of it.
-                 *
-                 * Editing used to rewrite the rows and stop there: the goods
-                 * stayed off the shelves in the quantities first rung up, and
-                 * the ledger went on carrying the original revenue, receivable
-                 * and cost. Changing a quantity therefore left the invoice, the
-                 * warehouse and the books each describing a different sale, and
-                 * nothing anywhere said so.
-                 *
-                 * So the goods that actually left come back, the edited lines
-                 * are issued in their place, and the books are told the
-                 * difference. Unlike creation, none of this is allowed to fail
-                 * into a warning: an edit that cannot be settled must leave the
-                 * invoice exactly as it was rather than half-applied.
-                 */
-                DB::transaction(function () use (
-                    $invoice, $itemsData, $validated, $goods, $settles, $before,
-                    $subtotal, $tax, $discount, $taxPercent, $discountPercent, $additionalCharges, $total,
-                    $headerWarehouseId, &$shortages
-                ) {
-                // Put back exactly what left, at what it cost when it left, and
-                // dated so it returns to its own place in the queue.
-                $returned = $settles ? $this->returnIssuedGoods($invoice, $goods) : ['cost_by_warehouse' => []];
-
-                // The rewritten lines start uncosted. Where the edit
-                // settles, the reissue below measures them again; where it does
-                // not — a cancelled invoice, whose goods are already back — no
-                // issue stands behind them, and the report saying so is more
-                // use than a figure carried over from a sale that was undone.
-                $invoice->items()->delete();
-                foreach ($itemsData as $itemData) {
-                    $itemData['invoice_id'] = $invoice->id;
-                    InvoiceItem::create($itemData);
-                }
-
-                $invoice->update([
-                    'customer_id' => $validated['customer_id'] ?? $invoice->customer_id,
-                    'warehouse_id' => $headerWarehouseId,
-                    'subtotal' => $subtotal,
-                    'tax' => $tax,
-                    'discount' => $discount,
-                    'tax_percent' => $taxPercent,
-                    'discount_percent' => $discountPercent,
-                    'additional_charges' => $additionalCharges,
-                    'total' => $total,
-                    'due_amount' => max(0, round($total - (float) $invoice->paid_amount, 5)),
-                    'payment_method' => $validated['payment_method'] ?? $invoice->payment_method,
-                    'status' => $validated['status'] ?? $invoice->status,
-                    'notes' => $validated['notes'] ?? $invoice->notes,
-                ]);
-
-                if ($settles) {
-                    // Checked after the return, so the units this invoice is
-                    // giving back count towards covering what it now asks for.
-                    $shortages = $goods->shortagesFor(array_map(
-                        fn (array $line) => [
-                            'product_id' => (int) $line['product_id'],
-                            'quantity' => (int) $line['quantity'] * (int) $line['unit_multiplier'],
-                            'warehouse_id' => (int) $line['warehouse_id'],
-                        ],
-                        $itemsData
-                    ));
-
-                    if ($shortages !== []) {
-                        // Unwinds the return and the rewritten lines with it.
-                        throw new RuntimeException('المخزون لا يغطي هذا البيع في المستودعات المحددة.');
-                    }
-
-                    $this->resettleGoods($invoice, $goods, $returned['cost_by_warehouse']);
-                    $this->correctInvoicePosting($invoice, $before);
-                }
-
-                // Reverse previous ledger entries for old expenses and recreate them
-                $ledger = app(\App\Services\Accounting\LedgerPostingService::class);
-                foreach ($invoice->expenses()->get() as $oldExpense) {
-                    try {
-                        $ledger->reverseFor($oldExpense->postingKey());
-                    } catch (\Throwable $e) {
-                        report($e);
-                    }
-                }
-                $invoice->expenses()->delete();
-                if (isset($validated['expenses']) && is_array($validated['expenses'])) {
-                    foreach ($validated['expenses'] as $expense) {
-                        if (!empty($expense['description']) && (float) ($expense['amount'] ?? 0) > 0) {
-                            $newExpense = Expense::create([
-                                'expense_number' => DocumentNumbers::format('expense', ((int) Expense::max('id')) + 1),
-                                'invoice_id' => $invoice->id,
-                                'sales_order_id' => $invoice->sales_order_id,
-                                'customer_id' => $invoice->customer_id,
-                                'description' => $expense['description'],
-                                'amount' => (float) $expense['amount'],
-                                'category' => $expense['category'] ?? 'other',
-                                'expense_date' => now(),
-                                'status' => $expense['status'] ?? Expense::STATUS_PENDING,
-                                'notes' => $expense['notes'] ?? null,
-                                'created_by' => auth()->check() ? auth()->id() : null,
-                                'currency' => base_currency_code(),
-                                'exchange_rate' => 1.0000,
-                            ]);
-                            try {
-                                $ledger->postExpense($newExpense);
-                            } catch (\Throwable $e) {
-                                report($e);
-                            }
-                        }
-                    }
-                }
-                });
+                $this->applyItemEdit($invoice, $itemsData, $validated, $goods, $settles, $before, $subtotal, $tax, $discount, $taxPercent, $discountPercent, $additionalCharges, $total, $headerWarehouseId, $shortages);
             } else {
                 // Update invoice without items (status only update)
                 $invoice->update([
@@ -1199,6 +1070,248 @@ class InvoiceController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    /** Validates an invoice edit. @return array<string, mixed> */
+    private function validateUpdateRequest(Request $request): array
+    {
+        return $request->validate([
+            'customer_id' => 'nullable|integer|exists:customers,id',
+            'items' => 'nullable|array|min:1',
+            'items.*.product_id' => 'required_with:items|integer|exists:products,id',
+            'items.*.product_variant_id' => 'nullable|integer|exists:product_variants,id',
+            'items.*.quantity' => 'required_with:items|integer|min:1',
+            'items.*.unit_price' => 'required_with:items|numeric|min:0',
+            'items.*.notes' => 'nullable|string|max:500',
+            'items.*.product_unit_id' => 'nullable|integer|exists:product_units,id',
+            // Accepted here as it is on creation. The client has always
+            // sent it; this end never read it, so every edit silently
+            // stripped the warehouse off every line — losing the record of
+            // which shelf the goods left, which is the only thing tying a
+            // line to the stock movement that filled it.
+            'items.*.warehouse_id' => 'nullable|integer|exists:warehouses,id',
+            'tax' => 'nullable|numeric|min:0',
+            'discount' => 'nullable|numeric|min:0',
+            // The rates the seller typed. When either is sent it decides
+            // the figure above, which is then ignored — see
+            // resolveCharges(). Capped at 100: a discount cannot take off
+            // more than the whole of the goods, and a tax that doubles them
+            // is a typo, not a rate.
+            'tax_percent' => 'nullable|numeric|min:0|max:100',
+            'discount_percent' => 'nullable|numeric|min:0|max:100',
+            'payment_method' => 'nullable|string|in:cash,card,transfer,check',
+            'notes' => 'nullable|string|max:2000',
+            'status' => 'nullable|string|in:pending,confirmed,processing,shipped,delivered,cancelled',
+            'expenses' => 'nullable|array',
+            'expenses.*.description' => 'required_with:expenses|string|max:255',
+            'expenses.*.amount' => 'required_with:expenses|numeric|min:0',
+            'expenses.*.category' => 'nullable|string|in:shipping,packaging,handling,other',
+            'expenses.*.status' => 'nullable|string|in:pending,paid,approved,rejected',
+            'expenses.*.notes' => 'nullable|string|max:1000',
+        ], [
+            'items.required' => 'يجب إضافة منتج واحد على الأقل',
+            'items.min' => 'يجب إضافة منتج واحد على الأقل',
+            'items.*.product_id.required' => 'معرف المنتج مطلوب',
+            'items.*.product_id.exists' => 'المنتج غير موجود',
+            'items.*.quantity.required' => 'الكمية مطلوبة',
+            'items.*.quantity.min' => 'الكمية يجب أن تكون على الأقل 1',
+            'items.*.unit_price.required' => 'السعر مطلوب',
+            'items.*.unit_price.min' => 'السعر يجب أن يكون 0 أو أكثر',
+        ]);
+    }
+
+    /**
+     * Prices an edited invoice's lines; a line without a warehouse keeps the
+     * invoice's own.
+     *
+     * @return array{0: list<array<string, mixed>>, 1: float|int} lines and subtotal
+     */
+    private function buildEditedLines(array $validated, Invoice $invoice): array
+    {
+        // Fetch all products to get their names
+        $productIds = collect($validated['items'])->pluck('product_id')->unique()->toArray();
+        $products = Product::whereIn('id', $productIds)->get()->keyBy('id');
+        $variants = ProductVariant::forLines($validated['items']);
+
+        // Fetch all product units if any
+        $unitIds = collect($validated['items'])->pluck('product_unit_id')->filter()->unique()->toArray();
+        $units = ProductUnit::whereIn('id', $unitIds)->get()->keyBy('id');
+
+        // Calculate subtotal from items
+        $subtotal = 0;
+        $itemsData = [];
+
+        foreach ($validated['items'] as $item) {
+            $product = $products->get($item['product_id']);
+
+            if (!$product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'المنتج غير موجود: ' . $item['product_id'],
+                ], 422);
+            }
+
+            $unitPrice = (float) $item['unit_price'];
+            $quantity = (int) $item['quantity'];
+            $totalPrice = $unitPrice * $quantity;
+
+            // Get unit info if provided
+            $unit = null;
+            $unitName = null;
+            $unitMultiplier = 1;
+            $unitId = null;
+
+            if (!empty($item['product_unit_id'])) {
+                $unit = $units->get($item['product_unit_id']);
+                if ($unit && (int) $unit->product_id === (int) $item['product_id']) {
+                    $unitId = $unit->id;
+                    $unitName = $unit->name;
+                    $unitMultiplier = ProductUnit::stockFactorOf($unit->base_unit_multiplier);
+                }
+            }
+
+            $variant = $variants->get((int) ($item['product_variant_id'] ?? 0));
+
+            $itemsData[] = [
+                'product_id' => $item['product_id'],
+                'product_variant_id' => $variant?->id,
+                'warehouse_id' => $item['warehouse_id'] ?? $invoice->warehouse_id,
+                'product_name' => $this->lineName($product, $variant),
+                'quantity' => $quantity,
+                'unit_price' => $unitPrice,
+                'total_price' => $totalPrice,
+                'notes' => $item['notes'] ?? null,
+                'product_unit_id' => $unitId,
+                'unit_name' => $unitName,
+                'unit_multiplier' => $unitMultiplier,
+            ];
+
+            $subtotal += $totalPrice;
+        }
+
+        return [$itemsData, $subtotal];
+    }
+
+    /** Reverses the invoice's old expenses in the ledger and recreates them from the edit. */
+    private function replaceInvoiceExpenses(Invoice $invoice, mixed $expenses): void
+    {
+        $ledger = app(\App\Services\Accounting\LedgerPostingService::class);
+
+        foreach ($invoice->expenses()->get() as $oldExpense) {
+            try {
+                $ledger->reverseFor($oldExpense->postingKey());
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+        $invoice->expenses()->delete();
+
+        if (! is_array($expenses)) {
+            return;
+        }
+
+        foreach ($expenses as $expense) {
+            if (empty($expense['description']) || (float) ($expense['amount'] ?? 0) <= 0) {
+                continue;
+            }
+
+            $newExpense = Expense::create([
+                'expense_number' => DocumentNumbers::format('expense', ((int) Expense::max('id')) + 1),
+                'invoice_id' => $invoice->id,
+                'sales_order_id' => $invoice->sales_order_id,
+                'customer_id' => $invoice->customer_id,
+                'description' => $expense['description'],
+                'amount' => (float) $expense['amount'],
+                'category' => $expense['category'] ?? 'other',
+                'expense_date' => now(),
+                'status' => $expense['status'] ?? Expense::STATUS_PENDING,
+                'notes' => $expense['notes'] ?? null,
+                'created_by' => auth()->check() ? auth()->id() : null,
+                'currency' => base_currency_code(),
+                'exchange_rate' => 1.0000,
+            ]);
+
+            try {
+                $ledger->postExpense($newExpense);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+    }
+
+    /*
+     * Everything the edit touches, or none of it.
+     *
+     * Editing used to rewrite the rows and stop there: the goods
+     * stayed off the shelves in the quantities first rung up, and
+     * the ledger went on carrying the original revenue, receivable
+     * and cost. Changing a quantity therefore left the invoice, the
+     * warehouse and the books each describing a different sale, and
+     * nothing anywhere said so.
+     *
+     * So the goods that actually left come back, the edited lines
+     * are issued in their place, and the books are told the
+     * difference. Unlike creation, none of this is allowed to fail
+     * into a warning: an edit that cannot be settled must leave the
+     * invoice exactly as it was rather than half-applied.
+     */
+    private function applyItemEdit(Invoice $invoice, array $itemsData, array $validated, GoodsIssueService $goods, bool $settles, array $before, $subtotal, $tax, $discount, $taxPercent, $discountPercent, $additionalCharges, $total, $headerWarehouseId, array &$shortages): void
+    {
+        DB::transaction(function () use ($invoice, $itemsData, $validated, $goods, $settles, $before, $subtotal, $tax, $discount, $taxPercent, $discountPercent, $additionalCharges, $total, $headerWarehouseId, &$shortages) {
+            // Put back exactly what left, at what it cost when it left, and
+            // dated so it returns to its own place in the queue.
+            $returned = $settles ? $this->returnIssuedGoods($invoice, $goods) : ['cost_by_warehouse' => []];
+
+            // The rewritten lines start uncosted. Where the edit
+            // settles, the reissue below measures them again; where it does
+            // not — a cancelled invoice, whose goods are already back — no
+            // issue stands behind them, and the report saying so is more
+            // use than a figure carried over from a sale that was undone.
+            $invoice->items()->delete();
+            foreach ($itemsData as $itemData) {
+                $itemData['invoice_id'] = $invoice->id;
+                InvoiceItem::create($itemData);
+            }
+
+            $invoice->update([
+                'customer_id' => $validated['customer_id'] ?? $invoice->customer_id,
+                'warehouse_id' => $headerWarehouseId,
+                'subtotal' => $subtotal,
+                'tax' => $tax,
+                'discount' => $discount,
+                'tax_percent' => $taxPercent,
+                'discount_percent' => $discountPercent,
+                'additional_charges' => $additionalCharges,
+                'total' => $total,
+                'due_amount' => max(0, round($total - (float) $invoice->paid_amount, 5)),
+                'payment_method' => $validated['payment_method'] ?? $invoice->payment_method,
+                'status' => $validated['status'] ?? $invoice->status,
+                'notes' => $validated['notes'] ?? $invoice->notes,
+            ]);
+
+            if ($settles) {
+                // Checked after the return, so the units this invoice is
+                // giving back count towards covering what it now asks for.
+                $shortages = $goods->shortagesFor(array_map(
+                    fn (array $line) => [
+                        'product_id' => (int) $line['product_id'],
+                        'quantity' => (int) $line['quantity'] * (int) $line['unit_multiplier'],
+                        'warehouse_id' => (int) $line['warehouse_id'],
+                    ],
+                    $itemsData
+                ));
+
+                if ($shortages !== []) {
+                    // Unwinds the return and the rewritten lines with it.
+                    throw new RuntimeException('المخزون لا يغطي هذا البيع في المستودعات المحددة.');
+                }
+
+                $this->resettleGoods($invoice, $goods, $returned['cost_by_warehouse']);
+                $this->correctInvoicePosting($invoice, $before);
+            }
+
+            $this->replaceInvoiceExpenses($invoice, $validated['expenses'] ?? null);
+        });
     }
 
     /**
