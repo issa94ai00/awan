@@ -91,11 +91,11 @@ $add('calc_purchases_credits', 'calc', 'warning', 'حسابات المشتريا
 //  - genuine: the price is below what that variant costs (cost_price × stock factor)  → a pricing problem;
 //  - FIFO mixing: the price covers the variant's own cost, but the COGS came from the product's shared
 //    FIFO layers (inventory_cost_layers has no variant column), which may hold a dearer variant's units.
-$genuine = []; $mixing = []; $mixingOld = [];
+$genuine = []; $mixing = []; $mixingOld = []; $olderBatch = [];
 // Variant-level cost layers went live here (docs/fifo-variant-cost-layers-plan.md); earlier lines are posted history.
 if (!defined('FIFO_VARIANT_SINCE')) define('FIFO_VARIANT_SINCE', '2026-11-17 04:00:00');
-$safe(function () use (&$genuine, &$mixing, &$mixingOld, $q, $f) {
-    foreach ($q("SELECT i.invoice_number, i.created_at inv_at, it.product_name, it.quantity, it.unit_price, it.unit_cost, it.unit_name,
+$safe(function () use (&$genuine, &$mixing, &$mixingOld, &$olderBatch, $q, $f) {
+    foreach ($q("SELECT i.invoice_number, i.created_at inv_at, it.product_variant_id, (SELECT COUNT(*) FROM product_variants v WHERE v.product_id = it.product_id) n_variants, it.product_name, it.quantity, it.unit_price, it.unit_cost, it.unit_name,
             GREATEST(1, ROUND(COALESCE(it.unit_multiplier,1))) factor, COALESCE(NULLIF(pv.cost_price,0), p.cost_price) own_cost
         FROM invoice_items it JOIN invoices i ON i.id = it.invoice_id LEFT JOIN products p ON p.id = it.product_id LEFT JOIN product_variants pv ON pv.id = it.product_variant_id
         WHERE i.status <> 'cancelled' AND it.unit_cost IS NOT NULL AND it.unit_cost > 0 AND it.unit_price + 0.0001 < it.unit_cost
@@ -104,7 +104,11 @@ $safe(function () use (&$genuine, &$mixing, &$mixingOld, $q, $f) {
         $label = "فاتورة {$x['invoice_number']} — {$x['product_name']}" . ($x['unit_name'] ? " ({$x['unit_name']})" : '');
         if ($own !== null && $own > 0 && (float) $x['unit_price'] + 0.0001 >= $own) {
             $row = ['table' => 'inventory_cost_layers', 'detail' => "{$label}: بيع {$f($x['unit_price'])} يغطي كلفة المتغير {$f($own)}، لكن الكلفة المصروفة {$f($x['unit_cost'])} من طبقة متغير آخر"];
-            if ($x['inv_at'] >= FIFO_VARIANT_SINCE) $mixing[] = $row; else $mixingOld[] = $row;
+            // A product with no variants has nothing to mix with: its dearer cost is an older, costlier
+            // batch being consumed first, which is what FIFO does. Only variant lines can cross variants.
+            if (empty($x['product_variant_id']) && (int) $x['n_variants'] === 0)
+                $olderBatch[] = ['table' => 'inventory_cost_layers', 'detail' => "{$label}: بيع {$f($x['unit_price'])} يغطي كلفة الصنف الحالية {$f($own)}، لكن الكلفة المصروفة {$f($x['unit_cost'])} من دفعة أقدم أغلى (FIFO)"];
+            elseif ($x['inv_at'] >= FIFO_VARIANT_SINCE) $mixing[] = $row; else $mixingOld[] = $row;
         } else {
             $genuine[] = ['table' => 'invoice_items', 'column' => 'unit_price', 'detail' => "{$label}: بيع {$f($x['unit_price'])} وكلفته " . ($own ? $f($own) : $f($x['unit_cost'])) . " — خسارة " . $f((($own ?: (float) $x['unit_cost']) - (float) $x['unit_price']) * (float) $x['quantity'])];
         }
@@ -117,6 +121,10 @@ $items = $mixing;
 $add('fifo_variant_mixing', 'costing', 'critical', 'كلفة مبيعات محمّلة من طبقة متغير آخر (بعد إصلاح FIFO حسب المتغير)',
     'منذ ' . FIFO_VARIANT_SINCE . ' تُستهلك طبقات الكلفة حسب المتغير؛ ظهور بند هنا يعني مساراً برمجياً لا يمرر المتغير (cost_variant_id) أو طبقة مشتركة قديمة.',
     'تمرير cost_variant_id في المسار الذي صرف البند، أو إسناد الطبقة: php artisan inventory:assign-layer-variants.', $items);
+$items = $olderBatch;
+$add('fifo_older_batch', 'costing', 'info', 'بنود صُرفت من دفعة أقدم بكلفة أعلى من كلفة الصنف الحالية',
+    'صنف بلا متغيرات استهلك FIFO دفعة قديمة أغلى من آخر كلفة؛ هذا سلوك FIFO الصحيح وليس خللاً، لكن هامش هذه البنود يبدو أقل من هامش السعر الحالي.',
+    'لا يلزم إجراء؛ راجع سعر البيع إن كانت الكلفة الحالية أقل بكثير.', $items);
 $items = $mixingOld;
 $add('fifo_variant_mixing_history', 'costing', 'info', 'بنود قديمة حُمّلت كلفة متغير آخر (قبل الإصلاح)',
     'بيعت قبل تفعيل طبقات الكلفة حسب المتغير. إجمالي الكلفة صحيح، وربحية البند وحده مشوّهة. قيود فترات مرحّلة لا يُعاد احتسابها.', 'لا يلزم إجراء.', $items);
