@@ -1550,6 +1550,31 @@ class AccountingReportController extends Controller
      */
     public function systemHealth(): JsonResponse
     {
+        $checks = array_merge(
+            $this->unpostedDocumentChecks(),
+            $this->salesOrderFlowChecks(),
+            $this->costingDataChecks(),
+            $this->currencyChecks(),
+            $this->ledgerIntegrityChecks(),
+        );
+
+        $failing = array_values(array_filter($checks, fn ($c) => $c['count'] > 0));
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'checked_at' => now()->toDateTimeString(),
+                'is_healthy' => $failing === [],
+                'issue_count' => count($failing),
+                'affected_records' => array_sum(array_column($failing, 'count')),
+                'checks' => $checks,
+            ],
+        ]);
+    }
+
+    /** Documents that never reached the ledger. @return list<array<string, mixed>> */
+    private function unpostedDocumentChecks(): array
+    {
         $checks = [];
 
         /* ---- Documents that never reached the ledger ---- */
@@ -1618,6 +1643,14 @@ class AccountingReportController extends Controller
             'افتح المسيرة وأعد حفظ حالتها لترحيل قيد الاستحقاق.'
         );
 
+        return $checks;
+    }
+
+    /** Sales orders whose documents do not follow them. @return list<array<string, mixed>> */
+    private function salesOrderFlowChecks(): array
+    {
+        $checks = [];
+
         /* ---- Sales orders whose documents do not follow them ---- */
 
         $shippedWithoutCogs = DB::table('sales_orders')
@@ -1650,6 +1683,14 @@ class AccountingReportController extends Controller
             'افتح الطلب وأعد تأكيده لإنشاء الفاتورة.'
         );
 
+        return $checks;
+    }
+
+    /** Data that makes the costing wrong. @return list<array<string, mixed>> */
+    private function costingDataChecks(): array
+    {
+        $checks = [];
+
         /* ---- Data that makes the costing wrong ---- */
 
         $unpricedStocked = DB::table('warehouse_inventory')
@@ -1677,6 +1718,14 @@ class AccountingReportController extends Controller
             'سجّل تسوية مخزنية من شاشة المخزون.'
         );
 
+        return $checks;
+    }
+
+    /** Currency: the books are kept in exactly one. @return list<array<string, mixed>> */
+    private function currencyChecks(): array
+    {
+        $checks = [];
+
         /* ---- Currency: the books are kept in exactly one ---- */
 
         $base = base_currency_code();
@@ -1693,6 +1742,14 @@ class AccountingReportController extends Controller
             'الدفاتر تُمسك بعملة واحدة ('.$base.') ولا يُحوَّل شيء عند الترحيل، فمبالغ هذه الفواتير أُثبتت كما هي.',
             'وحّد عملة المستندات مع عملة الأساس، أو راجع صحة مبالغ هذه الفواتير قبل الاعتماد عليها.'
         );
+
+        return $checks;
+    }
+
+    /** The ledger's own integrity. @return list<array<string, mixed>> */
+    private function ledgerIntegrityChecks(): array
+    {
+        $checks = [];
 
         /* ---- The ledger's own integrity ---- */
 
@@ -1717,18 +1774,7 @@ class AccountingReportController extends Controller
             'ابدأ من القيود غير المتوازنة أعلاه.'
         );
 
-        $failing = array_values(array_filter($checks, fn ($c) => $c['count'] > 0));
-
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'checked_at' => now()->toDateTimeString(),
-                'is_healthy' => $failing === [],
-                'issue_count' => count($failing),
-                'affected_records' => array_sum(array_column($failing, 'count')),
-                'checks' => $checks,
-            ],
-        ]);
+        return $checks;
     }
 
     /**

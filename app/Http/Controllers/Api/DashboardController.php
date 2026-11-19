@@ -51,78 +51,11 @@ class DashboardController extends Controller
         try {
             \Log::info('DashboardController::stats - Starting dashboard statistics retrieval');
             
-            $today = today();
-            $weekStart = now()->startOfWeek();
             $monthStart = now()->startOfMonth();
 
             \Log::info('DashboardController::stats - Fetching invoice revenue data');
             
-            // Revenue calculation based on status (confirmed, processing, shipped, delivered)
-            $revenueStatuses = [Invoice::STATUS_CONFIRMED, Invoice::STATUS_PROCESSING, Invoice::STATUS_SHIPPED, Invoice::STATUS_DELIVERED];
-            
-            $invoiceRevenue = [
-                'today' => (float) Invoice::whereDate('created_at', $today)
-                    ->whereIn('status', $revenueStatuses)
-                    ->sum('total'),
-                'week' => (float) Invoice::whereDate('created_at', '>=', $weekStart)
-                    ->whereIn('status', $revenueStatuses)
-                    ->sum('total'),
-                'month' => (float) Invoice::whereDate('created_at', '>=', $monthStart)
-                    ->whereIn('status', $revenueStatuses)
-                    ->sum('total'),
-                'total' => (float) Invoice::whereIn('status', $revenueStatuses)->sum('total'),
-                // The same stretch of last month (1st up to today's moment), so
-                // "this month" is compared like for like mid-month rather than
-                // against a whole finished month.
-                'previous_month_to_date' => (float) Invoice::whereBetween('created_at', [
-                    $monthStart->copy()->subMonthNoOverflow(),
-                    now()->subMonthNoOverflow(),
-                ])
-                    ->whereIn('status', $revenueStatuses)
-                    ->sum('total'),
-            ];
-
-            // Total sales (all statuses except cancelled)
-            $totalSales = [
-                'today' => (float) Invoice::whereDate('created_at', $today)
-                    ->where('status', '!=', Invoice::STATUS_CANCELLED)
-                    ->sum('total'),
-                'week' => (float) Invoice::whereDate('created_at', '>=', $weekStart)
-                    ->where('status', '!=', Invoice::STATUS_CANCELLED)
-                    ->sum('total'),
-                'month' => (float) Invoice::whereDate('created_at', '>=', $monthStart)
-                    ->where('status', '!=', Invoice::STATUS_CANCELLED)
-                    ->sum('total'),
-                'total' => (float) Invoice::where('status', '!=', Invoice::STATUS_CANCELLED)->sum('total'),
-            ];
-
-            $invoiceCounts = [
-                'total' => Invoice::count(),
-                'delivered' => Invoice::where('status', Invoice::STATUS_DELIVERED)->count(),
-                'pending' => Invoice::where('status', Invoice::STATUS_PENDING)->count(),
-                'cancelled' => Invoice::where('status', Invoice::STATUS_CANCELLED)->count(),
-            ];
-
-            // Every stage in one query; the dashboard charts these instead of a
-            // "paid" count, which no invoice status represents.
-            $invoiceStatusBreakdown = Invoice::query()
-                ->select('status', DB::raw('COUNT(*) as aggregate'))
-                ->groupBy('status')
-                ->pluck('aggregate', 'status')
-                ->map(fn ($count) => (int) $count);
-
-            $paymentAmounts = [
-                'completed' => (float) Payment::where('status', Payment::STATUS_COMPLETED)->sum('amount'),
-                'pending' => (float) Payment::where('status', Payment::STATUS_PENDING)->sum('amount'),
-                'refunded' => (float) Payment::where('status', Payment::STATUS_REFUNDED)->sum('amount'),
-            ];
-
-            $paymentCounts = [
-                'total' => Payment::count(),
-                'completed' => Payment::where('status', Payment::STATUS_COMPLETED)->count(),
-                'pending' => Payment::where('status', Payment::STATUS_PENDING)->count(),
-                'refunded' => Payment::where('status', Payment::STATUS_REFUNDED)->count(),
-            ];
+            [$revenueStatuses, $invoiceRevenue, $totalSales, $invoiceCounts, $invoiceStatusBreakdown, $paymentAmounts, $paymentCounts] = $this->invoiceAndPaymentStats();
 
             $productCounts = [
                 'total' => Product::count(),
@@ -375,5 +308,86 @@ class DashboardController extends Controller
                 'debug_line' => $e->getLine(),
             ], 500);
         }
+    }
+
+    /**
+     * Invoice revenue, sales totals and payment figures for the dashboard.
+     *
+     * @return array{0: array, 1: array, 2: array, 3: mixed, 4: array, 5: array, 6: array}
+     */
+    private function invoiceAndPaymentStats(): array
+    {
+        $today = today();
+        $weekStart = now()->startOfWeek();
+        $monthStart = now()->startOfMonth();
+
+        // Revenue calculation based on status (confirmed, processing, shipped, delivered)
+        $revenueStatuses = [Invoice::STATUS_CONFIRMED, Invoice::STATUS_PROCESSING, Invoice::STATUS_SHIPPED, Invoice::STATUS_DELIVERED];
+        
+        $invoiceRevenue = [
+            'today' => (float) Invoice::whereDate('created_at', $today)
+                ->whereIn('status', $revenueStatuses)
+                ->sum('total'),
+            'week' => (float) Invoice::whereDate('created_at', '>=', $weekStart)
+                ->whereIn('status', $revenueStatuses)
+                ->sum('total'),
+            'month' => (float) Invoice::whereDate('created_at', '>=', $monthStart)
+                ->whereIn('status', $revenueStatuses)
+                ->sum('total'),
+            'total' => (float) Invoice::whereIn('status', $revenueStatuses)->sum('total'),
+            // The same stretch of last month (1st up to today's moment), so
+            // "this month" is compared like for like mid-month rather than
+            // against a whole finished month.
+            'previous_month_to_date' => (float) Invoice::whereBetween('created_at', [
+                $monthStart->copy()->subMonthNoOverflow(),
+                now()->subMonthNoOverflow(),
+            ])
+                ->whereIn('status', $revenueStatuses)
+                ->sum('total'),
+        ];
+
+        // Total sales (all statuses except cancelled)
+        $totalSales = [
+            'today' => (float) Invoice::whereDate('created_at', $today)
+                ->where('status', '!=', Invoice::STATUS_CANCELLED)
+                ->sum('total'),
+            'week' => (float) Invoice::whereDate('created_at', '>=', $weekStart)
+                ->where('status', '!=', Invoice::STATUS_CANCELLED)
+                ->sum('total'),
+            'month' => (float) Invoice::whereDate('created_at', '>=', $monthStart)
+                ->where('status', '!=', Invoice::STATUS_CANCELLED)
+                ->sum('total'),
+            'total' => (float) Invoice::where('status', '!=', Invoice::STATUS_CANCELLED)->sum('total'),
+        ];
+
+        $invoiceCounts = [
+            'total' => Invoice::count(),
+            'delivered' => Invoice::where('status', Invoice::STATUS_DELIVERED)->count(),
+            'pending' => Invoice::where('status', Invoice::STATUS_PENDING)->count(),
+            'cancelled' => Invoice::where('status', Invoice::STATUS_CANCELLED)->count(),
+        ];
+
+        // Every stage in one query; the dashboard charts these instead of a
+        // "paid" count, which no invoice status represents.
+        $invoiceStatusBreakdown = Invoice::query()
+            ->select('status', DB::raw('COUNT(*) as aggregate'))
+            ->groupBy('status')
+            ->pluck('aggregate', 'status')
+            ->map(fn ($count) => (int) $count);
+
+        $paymentAmounts = [
+            'completed' => (float) Payment::where('status', Payment::STATUS_COMPLETED)->sum('amount'),
+            'pending' => (float) Payment::where('status', Payment::STATUS_PENDING)->sum('amount'),
+            'refunded' => (float) Payment::where('status', Payment::STATUS_REFUNDED)->sum('amount'),
+        ];
+
+        $paymentCounts = [
+            'total' => Payment::count(),
+            'completed' => Payment::where('status', Payment::STATUS_COMPLETED)->count(),
+            'pending' => Payment::where('status', Payment::STATUS_PENDING)->count(),
+            'refunded' => Payment::where('status', Payment::STATUS_REFUNDED)->count(),
+        ];
+
+        return [$revenueStatuses, $invoiceRevenue, $totalSales, $invoiceCounts, $invoiceStatusBreakdown, $paymentAmounts, $paymentCounts];
     }
 }
