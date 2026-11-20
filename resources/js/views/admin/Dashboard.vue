@@ -44,6 +44,9 @@
             <el-button size="small" type="danger" plain @click="loadDashboard()">{{ $t('dash_try_again') }}</el-button>
         </el-alert>
 
+        <!-- System health snapshot (admins only; the endpoint is admin-gated) -->
+        <SystemHealthCard v-if="authStore.hasRole('admin')" />
+
         <!-- ERP Features Dashboard Tabs -->
         <el-tabs v-model="activeTab" class="dashboard-tabs">
 
@@ -804,6 +807,7 @@ import { useCurrency } from '@/Composables/useCurrency';
 import { formatCompact, formatPercent } from '@/utils/numberFormat';
 import { statusTagType, statusLabel } from '@/utils/sales';
 import DashboardSkeleton from '@/components/admin/DashboardSkeleton.vue';
+import SystemHealthCard from '@/components/admin/SystemHealthCard.vue';
 import QuickPaymentDialog from '@/components/admin/sales/QuickPaymentDialog.vue';
 
 const { t, locale } = useI18n();
