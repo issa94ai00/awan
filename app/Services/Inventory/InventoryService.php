@@ -427,6 +427,21 @@ class InventoryService
                 'source' => $options['source'] ?? 'transfer',
             ]));
 
+            // The layers moved value between the two warehouses; the ledger
+            // must follow, or each warehouse's inventory account drifts from
+            // its cost layers. Replays (null legs) post nothing.
+            if ($out && $in && (float) $out->unit_cost > 0) {
+                try {
+                    $ledger = app(\App\Services\Accounting\LedgerPostingService::class);
+                    $cost = (float) $out->unit_cost * $quantity;
+                    $label = (string) ($options['reference'] ?? ('مناقلة #'.$out->id));
+                    $ledger->postTransferShipment('stock_transfer_ship:'.$out->id, $fromWarehouseId, $cost, $label, $out);
+                    $ledger->postTransferReceipt('stock_transfer_receive:'.$out->id, $toWarehouseId, $cost, $label, $in);
+                } catch (\Throwable $e) {
+                    report($e);
+                }
+            }
+
             return [$out, $in];
         });
     }
