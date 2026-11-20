@@ -444,6 +444,7 @@ const menu = [
                     { labelKey: 'audit_statistics', path: '/admin/audit/statistics' },
                 ],
             },
+            { key: 'system_health', labelKey: 'system_health', path: '/admin/system-health', icon: Monitor },
             { key: 'pos', labelKey: 'pos', path: '/admin/pos', icon: Monitor },
             { key: 'inquiries', labelKey: 'inquiries', path: '/admin/inquiries', icon: ChatLineRound },
             { key: 'visitors', labelKey: 'visitors', path: '/admin/visitors', icon: View },

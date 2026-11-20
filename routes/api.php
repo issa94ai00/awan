@@ -74,6 +74,7 @@ use App\Http\Controllers\Api\AnalyticsController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\WorkflowController;
 use App\Http\Controllers\Api\AuditController;
+use App\Http\Controllers\Api\SystemDiagnosticsController;
 use App\Http\Controllers\Api\AccessActivityController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\Api\FlutterCartController;
@@ -1237,6 +1238,13 @@ Route::prefix('v1')->middleware('web')->group(function () {
 
         // Audit Logs (سجلات التدقيق) — who did what across every module,
         // including the risk scan. Admin only, matching the sidebar.
+        // System diagnostics dashboard — the erd.html health checks, live. Admin only.
+        Route::prefix('system-diagnostics')->middleware('role:admin')->group(function () {
+            Route::get('/', [SystemDiagnosticsController::class, 'index'])->name('api.system-diagnostics.index');
+            Route::post('/run', [SystemDiagnosticsController::class, 'run'])->name('api.system-diagnostics.run');
+            Route::get('/export', [SystemDiagnosticsController::class, 'export'])->name('api.system-diagnostics.export');
+        });
+
         Route::prefix('audit')->middleware('role:admin')->group(function () {
             Route::get('/risk-scan', [AuditController::class, 'riskScan'])->name('api.audit.risk-scan');
             Route::get('/risk-scan/export', [AuditController::class, 'exportRiskScan'])->name('api.audit.risk-scan.export');

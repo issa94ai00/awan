@@ -87,6 +87,7 @@ const PAGE_PERMISSIONS = [
     ['/admin/notifications', 'notifications.view'],
     ['/admin/notifications/templates', 'notifications.templates.view'],
     ['/admin/notifications/preferences', 'notifications.preferences.view'],
+    ['/admin/system-health', 'audit.view'],
     ['/admin/audit', 'audit.view'],
     ['/admin/audit/entity-logs', 'audit.entity_logs.view'],
     ['/admin/audit/statistics', 'audit.statistics.view'],

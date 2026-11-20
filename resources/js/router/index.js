@@ -734,6 +734,12 @@ const routes = [
                 name: 'admin.workflows.executions',
                 component: () => import('@/views/admin/workflows/Executions.vue')
             },
+            // System health dashboard
+            {
+                path: 'system-health',
+                name: 'admin.system-health',
+                component: () => import('@/views/admin/system/Diagnostics.vue')
+            },
             // Audit Logs
             {
                 path: 'audit',
