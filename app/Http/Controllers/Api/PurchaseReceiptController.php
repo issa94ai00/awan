@@ -80,7 +80,8 @@ class PurchaseReceiptController extends Controller
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.product_variant_id' => 'nullable|integer|exists:product_variants,id',
             'items.*.quantity' => 'required|integer|min:1',
-            'items.*.unit_price' => 'required|numeric|min:0',
+            // A zero price opens a zero-cost layer: whatever is sold from it shows as pure profit.
+            'items.*.unit_price' => 'required|numeric|gt:0',
             'items.*.sale_price' => 'nullable|numeric|min:0',
             // Paid as the goods are booked in, in part or in full. Recorded as
             // a supplier payment linked to this receipt, in the same
