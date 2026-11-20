@@ -85,3 +85,9 @@ Schedule::call(fn () => app(\App\Services\NotificationService::class)->deleteOld
     ->name('notifications:prune-read')
     ->dailyAt('02:30')
     ->withoutOverlapping();
+
+// Daily system-health snapshot: feeds the score trend on /admin/system-health
+// even when nobody presses "run". Read-only checks, off-peak.
+Schedule::command('diagnostics:run')
+    ->dailyAt('03:30')
+    ->withoutOverlapping();
